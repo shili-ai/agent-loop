@@ -138,17 +138,13 @@ body {
 }
 
 .codex-run > .ant-space {
-  gap: 12px !important;
+  gap: 10px !important;
 }
 
-.codex-run > .ant-space > .ant-space-item:first-child {
-  padding-bottom: 4px;
+.run-summary {
   border-bottom: 1px solid #eef2f7;
-}
-
-.codex-step {
-  border-left: 2px solid #e5e7eb;
-  padding: 2px 0 2px 14px;
+  color: #374151;
+  padding: 0 0 10px;
 }
 
 .assistant-activity.compact {
@@ -171,7 +167,7 @@ body {
 }
 
 .codex-step-body {
-  margin: 8px 0 0 0 !important;
+  margin: 10px 0 0 42px !important;
   color: #374151;
   font-size: 14px;
   line-height: 1.65;
@@ -179,8 +175,18 @@ body {
 }
 
 .codex-step-output {
-  margin-top: 10px;
+  margin: 12px 0 0 42px;
   max-width: 760px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+  padding: 12px 14px;
+}
+
+.codex-step-output.compact {
+  margin-top: 8px;
+  background: #ffffff;
+  padding: 8px 10px;
 }
 
 .codex-output-collapse .ant-collapse-header {
@@ -193,10 +199,64 @@ body {
 }
 
 .codex-final-answer {
-  margin: 6px 0 0 0 !important;
-  border-top: 1px solid #eef2f7;
-  padding-top: 14px;
+  margin: 12px 0 0 0 !important;
+  border: 1px solid #d7e8ef;
+  border-left: 3px solid #176b87;
+  border-radius: 8px;
+  background: #fbfdfe;
+  padding: 14px 16px;
   max-width: 760px;
+}
+
+.agent-step-card {
+  border: 1px solid #e5e7eb;
+  border-left: 3px solid #9db7c3;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px 14px;
+}
+
+.agent-step-card.compact {
+  border-color: #edf2f7;
+  border-left-color: #cbd5e1;
+  background: #fcfcfd;
+  padding: 10px 12px;
+}
+
+.agent-step-card.pending {
+  border-left-color: #176b87;
+  background: #fbfdfe;
+}
+
+.agent-step-header {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.agent-step-icon {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 999px;
+  background: #eef7fa;
+  color: #176b87;
+}
+
+.agent-step-heading {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.step-index {
+  margin-inline-end: 0;
+  border-color: #d9e2e7;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12px;
 }
 
 .activity-details-collapse,
@@ -251,7 +311,7 @@ body {
 .markdown-content h2,
 .markdown-content h3 {
   margin: 0 0 8px;
-  color: #111827;
+  color: #123744;
   font-size: 15px;
   line-height: 1.45;
   font-weight: 600;
@@ -277,12 +337,13 @@ body {
 }
 
 .markdown-content li + li {
-  margin-top: 4px;
+  margin-top: 5px;
 }
 
 .markdown-content code {
   border-radius: 4px;
-  background: #f3f4f6;
+  background: #eef2f7;
+  color: #334155;
   padding: 1px 4px;
   font-size: 0.9em;
 }

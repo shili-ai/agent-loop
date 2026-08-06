@@ -7,7 +7,7 @@ import {
   RobotOutlined,
   ToolOutlined,
 } from "@ant-design/icons";
-import { Collapse, Descriptions, List, Space, Typography } from "antd";
+import { Collapse, Descriptions, List, Space, Tag, Typography } from "antd";
 import type { ReactNode } from "react";
 import type { AgentMessage, AgentRun, AgentStep } from "../../types/agent";
 import MarkdownContent from "../atoms/MarkdownContent";
@@ -25,9 +25,14 @@ export default function InlineAgentRun({ finalAnswer, pending = false, run }: In
   return (
     <div className="codex-run">
       <Space direction="vertical" size={14} className="full-width">
-        <Typography.Text type="secondary">{runLabel(run, running, steps.length)}</Typography.Text>
+        <div className="run-summary">
+          <Space size={8}>
+            {running ? <LoadingOutlined /> : <CheckCircleOutlined />}
+            <Typography.Text strong>{runLabel(run, running, steps.length)}</Typography.Text>
+          </Space>
+        </div>
 
-        {steps.map((step) => <StepActivity key={step.id} step={step} />)}
+        {steps.map((step, index) => <StepActivity key={step.id} index={index} step={step} />)}
         {running ? <PendingActivity hasSteps={steps.length > 0} /> : null}
 
         {!running ? <FinalAnswer message={finalAnswer} run={run} /> : null}
@@ -45,11 +50,16 @@ function runLabel(run: AgentRun | undefined, running: boolean, stepCount: number
 
 function PendingActivity({ hasSteps }: { hasSteps: boolean }) {
   return (
-    <div className="codex-step">
-      <Space size={8}>
-        <LoadingOutlined />
-        <Typography.Text type="secondary">{hasSteps ? "Đang xử lý tiếp" : "Đang chạy agent loop"}</Typography.Text>
-      </Space>
+    <div className="agent-step-card pending">
+      <div className="agent-step-header">
+        <span className="agent-step-icon">
+          <LoadingOutlined />
+        </span>
+        <div className="agent-step-heading">
+          <Typography.Text strong>{hasSteps ? "Đang xử lý tiếp" : "Đang chạy agent loop"}</Typography.Text>
+          <Typography.Text type="secondary">Realtime</Typography.Text>
+        </div>
+      </div>
       <Typography.Paragraph className="codex-step-body">
         Agent đang xử lý và sẽ tự cập nhật ngay khi có kết quả mới.
       </Typography.Paragraph>
@@ -57,17 +67,23 @@ function PendingActivity({ hasSteps }: { hasSteps: boolean }) {
   );
 }
 
-function StepActivity({ step }: { step: AgentStep }) {
+function StepActivity({ index, step }: { index: number; step: AgentStep }) {
   const output = normalizeOutput(step);
+  const compact = isCompactStep(step);
 
   return (
-    <div className="codex-step">
-      <Space size={8} className="codex-step-title">
-        {stepIcon(step)}
-        <Typography.Text type="secondary">{stepLabel(step)}</Typography.Text>
-      </Space>
-      <Typography.Paragraph className="codex-step-body">{step.summary}</Typography.Paragraph>
-      {output ? <div className="codex-step-output">{output}</div> : null}
+    <div className={compact ? "agent-step-card compact" : "agent-step-card"}>
+      <div className="agent-step-header">
+        <span className="agent-step-icon">{stepIcon(step)}</span>
+        <div className="agent-step-heading">
+          <Space size={8} wrap>
+            <Tag className="step-index">Bước {index + 1}</Tag>
+            <Typography.Text strong>{stepLabel(step)}</Typography.Text>
+          </Space>
+          <Typography.Text type="secondary">{step.summary}</Typography.Text>
+        </div>
+      </div>
+      {output ? <div className={compact ? "codex-step-output compact" : "codex-step-output"}>{output}</div> : null}
     </div>
   );
 }
@@ -115,6 +131,10 @@ function stepLabel(step: AgentStep) {
   if (step.kind === "answer") return "Tổng hợp câu trả lời";
   if (step.kind === "error") return "Đã dừng";
   return step.title;
+}
+
+function isCompactStep(step: AgentStep) {
+  return ["decision", "evaluation"].includes(step.kind);
 }
 
 function normalizeOutput(step: AgentStep): ReactNode {
