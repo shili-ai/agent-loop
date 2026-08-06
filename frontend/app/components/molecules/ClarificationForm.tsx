@@ -45,7 +45,7 @@ export default function ClarificationForm({ questions, disabled, onSubmit }: Cla
   return (
     <div className="clarification-form">
       <Space direction="vertical" size={16} className="full-width">
-        <Typography.Text strong>Trả lời nhanh để agent tiếp tục</Typography.Text>
+        <Typography.Text strong>AI đề xuất vài câu hỏi để agent tiếp tục</Typography.Text>
 
         {questions.map((question, index) => {
           const key = keyOf(question, index);
@@ -53,7 +53,7 @@ export default function ClarificationForm({ questions, disabled, onSubmit }: Cla
 
           return (
             <div key={key} className="clarification-question">
-              <Typography.Text>{question.question}</Typography.Text>
+              <Typography.Text strong>{question.question}</Typography.Text>
 
               {isChoice ? (
                 <Space direction="vertical" size={6} className="full-width">

@@ -276,7 +276,7 @@ function stepKindLabel(step: AgentStep) {
 }
 
 function usesModel(step: AgentStep) {
-  return step.kind === "llm" || (step.kind === "decision" && step.data.source === "model");
+  return step.kind === "llm" || step.data.source === "model";
 }
 
 function stepTone(step: AgentStep) {

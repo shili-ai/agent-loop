@@ -1,43 +1,142 @@
+require "json"
+
 module AgentLoop
   class ClarificationBuilder
-    # Mỗi câu hỏi có type "choice" (chọn từ options, cho phép nhập "Khác")
-    # hoặc "text" (nhập tự do). Frontend render dạng form giống AskUserQuestion.
-    QUESTIONS = [
-      {
-        id: "output_type",
-        question: "Bạn muốn output cuối là gì?",
-        type: "choice",
-        options: ["Email follow-up", "Proposal", "Battlecard", "Câu trả lời RFP/RFI"]
-      },
-      {
-        id: "customer",
-        question: "Khách hàng thuộc segment nào và pain point chính là gì?",
-        type: "text"
-      },
-      {
-        id: "focus",
-        question: "Có sản phẩm/module cụ thể nào cần nhấn mạnh không?",
-        type: "text"
-      }
-    ].freeze
+    MIN_QUESTIONS = 3
+    MAX_QUESTIONS = 5
+    MIN_OPTIONS = 2
+    MAX_OPTIONS = 4
 
-    def initialize(message:)
-      @message = message
+    def initialize(message:, client: LocalModelClient.new)
+      @message = message.to_s
+      @client = client
     end
 
     def call
+      result = @client.chat_with_metrics(messages: messages, temperature: 0.2, format: "json")
+      questions = sanitize_questions(parse(result[:content]))
+      raise "Model không tạo đủ câu hỏi làm rõ" if questions.length < MIN_QUESTIONS
+
       {
-        questions: QUESTIONS,
-        output: markdown_output
+        questions: questions,
+        output: markdown_output(questions, source: "model"),
+        source: "model",
+        provider: "ollama",
+        model: @client.model,
+        metrics: result[:metrics],
+        raw: result[:content]
+      }
+    rescue StandardError => e
+      questions = fallback_questions
+      {
+        questions: questions,
+        output: markdown_output(questions, source: "fallback"),
+        source: "fallback",
+        provider: "ollama",
+        model: @client.model,
+        error: e.message
       }
     end
 
     private
 
-    def markdown_output
-      lines = ["### Cần làm rõ thêm", "Yêu cầu hiện tại khá ngắn: \"#{@message.truncate(100)}\"", "", "Agent sẽ hỏi:"]
-      QUESTIONS.each { |question| lines << "- #{question[:question]}" }
+    def messages
+      [
+        { role: "system", content: PromptTemplate.render("clarification_system") },
+        { role: "user", content: PromptTemplate.render("clarification_user", message: @message) }
+      ]
+    end
+
+    def parse(content)
+      data = JSON.parse(extract_json(content))
+      questions = data.is_a?(Hash) ? data["questions"] : data
+      raise "Model không trả về mảng questions" unless questions.is_a?(Array)
+
+      questions
+    end
+
+    def extract_json(content)
+      text = content.to_s.strip
+      return text if text.start_with?("{") || text.start_with?("[")
+
+      starts = [text.index("{"), text.index("[")].compact
+      finish = [text.rindex("}"), text.rindex("]")].compact.max
+      start = starts.min
+      raise "Model không trả JSON hợp lệ" unless start && finish && finish > start
+
+      text[start..finish]
+    end
+
+    def sanitize_questions(items)
+      items.filter_map.with_index do |item, index|
+        next unless item.is_a?(Hash)
+
+        question = item["question"].to_s.squish
+        options = Array(item["options"]).map { |option| option.to_s.squish }.reject(&:blank?).uniq.first(MAX_OPTIONS)
+        next if question.blank? || options.length < MIN_OPTIONS
+
+        {
+          id: item["id"].presence || question_id(question, index),
+          question: question,
+          type: "choice",
+          options: options
+        }
+      end.first(MAX_QUESTIONS)
+    end
+
+    def question_id(question, index)
+      base = question.downcase.gsub(/[^a-z0-9\s_-]/, "").squish.tr(" ", "_")
+      base.presence || "clarification_#{index + 1}"
+    end
+
+    def markdown_output(questions, source:)
+      label = source == "model" ? "AI đề xuất" : "Fallback theo nội dung yêu cầu"
+      lines = ["### Cần làm rõ thêm", "#{label} #{questions.length} câu hỏi và các câu trả lời gợi ý:", ""]
+      questions.each do |question|
+        lines << "- **#{question[:question]}**"
+        question[:options].each { |option| lines << "  - #{option}" }
+      end
       lines.join("\n")
+    end
+
+    def fallback_questions
+      output_options = inferred_output_options
+      [
+        {
+          id: "desired_output",
+          question: "Bạn muốn agent ưu tiên dạng đầu ra nào cho yêu cầu này?",
+          type: "choice",
+          options: output_options
+        },
+        {
+          id: "audience_context",
+          question: "Ngữ cảnh người nhận hoặc khách hàng nên được hiểu theo hướng nào?",
+          type: "choice",
+          options: ["SMB cần giải pháp nhanh", "Enterprise quan tâm bảo mật và tích hợp", "Đội mua hàng cần ROI rõ", "Chưa xác định, agent tự giả định hợp lý"]
+        },
+        {
+          id: "depth",
+          question: "Mức độ chi tiết bạn muốn agent dùng là gì?",
+          type: "choice",
+          options: ["Ngắn gọn để gửi ngay", "Có luận điểm và bằng chứng", "Chi tiết theo từng bước", "Chỉ cần khung nháp để chỉnh tiếp"]
+        },
+        {
+          id: "tone",
+          question: "Giọng văn nên theo hướng nào?",
+          type: "choice",
+          options: ["Chuyên nghiệp, trực tiếp", "Tư vấn mềm và thân thiện", "Thuyết phục theo số liệu", "Trung lập để dễ tuỳ chỉnh"]
+        }
+      ]
+    end
+
+    def inferred_output_options
+      text = @message.downcase
+      options = []
+      options << "Email follow-up gửi khách" if text.include?("email") || text.include?("follow")
+      options << "Proposal ngắn có bullet" if text.include?("proposal") || text.include?("đề xuất")
+      options << "Battlecard so sánh đối thủ" if text.include?("battlecard") || text.include?("đối thủ")
+      options << "Câu trả lời RFP/RFI" if text.include?("rfp") || text.include?("rfi")
+      (options + ["Tóm tắt tư vấn presales", "Checklist hành động tiếp theo", "Bản nháp có thể chỉnh sửa"]).uniq.first(MAX_OPTIONS)
     end
   end
 end
