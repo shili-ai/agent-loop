@@ -9,7 +9,7 @@ import {
   RobotOutlined,
   ToolOutlined,
 } from "@ant-design/icons";
-import { Button, Collapse, Descriptions, List, Space, Tag, Typography } from "antd";
+import { Button, Collapse, List, Space, Tag, Typography } from "antd";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import type { AgentMessage, AgentRun, AgentStep } from "../../types/agent";
@@ -30,19 +30,11 @@ export default function InlineAgentRun({ finalAnswer, pending = false, run }: In
 
   return (
     <div className="codex-run">
-      <Space direction="vertical" size={14} className="full-width">
+      <Space direction="vertical" size={10} className="full-width">
         <div className="run-summary">
-          <Space direction="vertical" size={8}>
-            <Space size={8}>
-              {running ? <LoadingOutlined /> : <CheckCircleOutlined />}
-              <Typography.Text strong>{runLabel(run, running, visibleSteps.length)}</Typography.Text>
-            </Space>
-            <Space size={6} wrap>
-              <Tag className="step-kind thinking">Decision</Tag>
-              <Tag className="step-kind tool">Tool</Tag>
-              <Tag className="step-kind model">AI model</Tag>
-              <Tag className="step-kind final">Final</Tag>
-            </Space>
+          <Space size={8}>
+            {running ? <LoadingOutlined /> : <CheckCircleOutlined />}
+            <Typography.Text strong>{runLabel(run, running, visibleSteps.length)}</Typography.Text>
           </Space>
         </div>
 
@@ -65,7 +57,7 @@ function runLabel(run: AgentRun | undefined, running: boolean, stepCount: number
 
 function PendingActivity({ hasSteps }: { hasSteps: boolean }) {
   return (
-    <div className="agent-step-card pending">
+    <div className="agent-step-line pending">
       <div className="agent-step-header">
         <span className="agent-step-icon">
           <LoadingOutlined />
@@ -85,28 +77,30 @@ function PendingActivity({ hasSteps }: { hasSteps: boolean }) {
 function StepActivity({ index, step }: { index: number; step: AgentStep }) {
   const [showIo, setShowIo] = useState(false);
   const output = normalizeOutput(step);
-  const compact = isCompactStep(step);
   const tone = stepTone(step);
   const details = stepDetails(step);
 
   return (
-    <div className={`agent-step-card ${tone}${compact ? " compact" : ""}`}>
+    <div className={`agent-step-line ${tone}`}>
       <div className="agent-step-header">
         <span className="agent-step-icon">{stepIcon(step)}</span>
         <div className="agent-step-heading">
-          <Space size={8} wrap>
+          <Space size={6} wrap>
             <Tag className="step-index">Bước {index + 1}</Tag>
             <Tag className={`step-kind ${tone}`}>{stepKindLabel(step)}</Tag>
+            {usesModel(step) && step.kind !== "llm" ? <Tag className="step-kind model">AI model</Tag> : null}
             <Typography.Text strong>{stepLabel(step)}</Typography.Text>
-            <Button size="small" type={showIo ? "primary" : "default"} onClick={() => setShowIo(!showIo)}>
+            <Button size="small" type="link" className="step-io-button" onClick={() => setShowIo(!showIo)}>
               I/O
             </Button>
           </Space>
-          {details ? <Typography.Text className="step-detail">{details}</Typography.Text> : null}
-          <Typography.Text type="secondary">{step.summary}</Typography.Text>
+          {details ? <Typography.Text className="step-detail italic">{details}</Typography.Text> : null}
+          <Typography.Text type="secondary" className="step-summary">
+            {step.summary}
+          </Typography.Text>
         </div>
       </div>
-      {output ? <div className={compact ? "codex-step-output compact" : "codex-step-output"}>{output}</div> : null}
+      {output ? <div className="codex-step-output">{output}</div> : null}
       {showIo ? <StepIoPanel step={step} /> : null}
     </div>
   );
@@ -116,23 +110,27 @@ function FinalAnswer({ message, run }: { message?: AgentMessage; run?: AgentRun 
   const answer = message?.content ?? answerFromRun(run);
   if (!answer) return null;
 
-  return <MarkdownContent className="markdown-content codex-final-answer">{answer}</MarkdownContent>;
+  return (
+    <section className="final-answer-section">
+      <MarkdownContent className="markdown-content codex-final-answer">{answer}</MarkdownContent>
+    </section>
+  );
 }
 
 function FlowDiagramStep({ step }: { step: AgentStep }) {
+  const [showDiagram, setShowDiagram] = useState(false);
   const diagram = step.data.diagram;
 
   return (
-    <div className="agent-flow-card">
+    <div className="agent-flow-section">
       <Space direction="vertical" size={10} className="full-width">
-        <Space size={8}>
-          <Tag className="step-index">Flow</Tag>
-          <Typography.Text strong>Sơ đồ luồng đã chạy</Typography.Text>
-        </Space>
-        {typeof step.data.output === "string" ? (
+        <Button size="small" onClick={() => setShowDiagram((current) => !current)}>
+          {showDiagram ? "Ẩn sơ đồ luồng" : "Xem sơ đồ luồng"}
+        </Button>
+        {showDiagram && typeof step.data.output === "string" ? (
           <MarkdownContent className="markdown-content step-output-text">{step.data.output}</MarkdownContent>
         ) : null}
-        {typeof diagram === "string" ? <MermaidDiagram chart={diagram} /> : null}
+        {showDiagram && typeof diagram === "string" ? <MermaidDiagram chart={diagram} /> : null}
       </Space>
     </div>
   );
@@ -277,6 +275,10 @@ function stepKindLabel(step: AgentStep) {
   return "Agent";
 }
 
+function usesModel(step: AgentStep) {
+  return step.kind === "llm" || (step.kind === "decision" && step.data.source === "model");
+}
+
 function stepTone(step: AgentStep) {
   if (["document_search", "artifact", "tool"].includes(step.kind)) return "tool";
   if (step.kind === "llm") return "model";
@@ -309,10 +311,6 @@ function stepDetails(step: AgentStep) {
   }
 
   return null;
-}
-
-function isCompactStep(step: AgentStep) {
-  return ["decision", "evaluation"].includes(step.kind);
 }
 
 function normalizeOutput(step: AgentStep): ReactNode {
@@ -362,19 +360,13 @@ function normalizeOutput(step: AgentStep): ReactNode {
 
 function ModelMetrics({ data }: { data: Record<string, unknown> }) {
   return (
-    <Descriptions
-      size="small"
-      column={1}
-      className="model-metrics"
-      items={[
-        { key: "model", label: "Model", children: `${stringValue(data.provider, "ollama")} · ${stringValue(data.model, "-")}` },
-        { key: "started", label: "Bắt đầu gọi", children: formatTime(data.request_started_at) },
-        { key: "first", label: "Token đầu tiên", children: metricTime(data.first_token_at, data.first_token_latency_ms) },
-        { key: "last", label: "Token cuối cùng", children: metricTime(data.last_token_at, data.last_token_latency_ms) },
-        { key: "total", label: "Tổng thời gian", children: formatMs(metricNumber(data.total_duration_ms)) ?? "-" },
-        { key: "chunks", label: "Stream chunks", children: String(data.streamed_chunks ?? "-") },
-      ]}
-    />
+    <Typography.Text className="model-metrics">
+      <Typography.Text strong>Model:</Typography.Text> {stringValue(data.provider, "ollama")} ·{" "}
+      {stringValue(data.model, "-")} · <Typography.Text italic>token đầu</Typography.Text>{" "}
+      {metricTime(data.first_token_at, data.first_token_latency_ms)} ·{" "}
+      <Typography.Text italic>tổng</Typography.Text> {formatMs(metricNumber(data.total_duration_ms)) ?? "-"} · chunks{" "}
+      {String(data.streamed_chunks ?? "-")}
+    </Typography.Text>
   );
 }
 
@@ -424,11 +416,9 @@ function ToolOutput({ data }: { data: Record<string, unknown> }) {
       {markdownOutput ? <MarkdownContent className="markdown-content step-output-text">{markdownOutput}</MarkdownContent> : null}
 
       {tools?.length ? (
-        <Descriptions
-          size="small"
-          column={1}
-          items={[{ key: "tools", label: "Công cụ", children: tools.join(", ") }]}
-        />
+        <Typography.Text type="secondary">
+          <Typography.Text strong>Công cụ:</Typography.Text> {tools.join(", ")}
+        </Typography.Text>
       ) : null}
 
       {artifact?.bullets?.length ? (
