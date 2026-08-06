@@ -14,6 +14,7 @@ type AgentChatPanelProps = {
   sending: boolean;
   onChangeMessage: (message: string) => void;
   onSend: () => void;
+  onClarify: (text: string) => void;
 };
 
 export default function AgentChatPanel({
@@ -25,6 +26,7 @@ export default function AgentChatPanel({
   sending,
   onChangeMessage,
   onSend,
+  onClarify,
 }: AgentChatPanelProps) {
   return (
     <div className="chat-column">
@@ -54,6 +56,8 @@ export default function AgentChatPanel({
                   finalAnswer={item.finalAnswer}
                   pending={item.pending}
                   run={item.run}
+                  disabled={disabled}
+                  onClarify={item.isLatest ? onClarify : undefined}
                 />
               )
             }
@@ -76,9 +80,10 @@ export default function AgentChatPanel({
 
 type ChatItem =
   | { key: string; type: "message"; message: AgentMessage }
-  | { key: string; type: "run"; finalAnswer?: AgentMessage; pending?: boolean; run?: AgentRun };
+  | { key: string; type: "run"; finalAnswer?: AgentMessage; pending?: boolean; run?: AgentRun; isLatest?: boolean };
 
 function buildChatItems(conversation: AgentConversation, sending: boolean): ChatItem[] {
+  const latestRunId = conversation.runs.at(-1)?.id;
   const runsByUserMessageId = new Map(conversation.runs.map((run) => [run.user_message_id, run]));
   const messagesById = new Map(conversation.messages.map((message) => [message.id, message]));
   const assistantMessageIdsInRuns = new Set(
@@ -102,6 +107,7 @@ function buildChatItems(conversation: AgentConversation, sending: boolean): Chat
         type: "run",
         finalAnswer: run.assistant_message_id ? messagesById.get(run.assistant_message_id) : undefined,
         run,
+        isLatest: run.id === latestRunId,
       });
       return;
     }

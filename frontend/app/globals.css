@@ -216,6 +216,20 @@ body {
   padding: 14px 16px;
 }
 
+.clarification-form {
+  max-width: 760px;
+  border: 1px solid #d6e4ff;
+  border-radius: 8px;
+  background: #f5f9ff;
+  padding: 16px;
+}
+
+.clarification-question {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .mermaid-diagram {
   overflow-x: auto;
   border: 1px solid #eef2f7;

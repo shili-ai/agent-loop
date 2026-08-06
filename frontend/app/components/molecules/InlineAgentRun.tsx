@@ -15,18 +15,25 @@ import { useState } from "react";
 import type { AgentMessage, AgentRun, AgentStep } from "../../types/agent";
 import MarkdownContent from "../atoms/MarkdownContent";
 import MermaidDiagram from "../atoms/MermaidDiagram";
+import ClarificationForm, { type ClarificationQuestion } from "./ClarificationForm";
 
 type InlineAgentRunProps = {
   finalAnswer?: AgentMessage;
   pending?: boolean;
   run?: AgentRun;
+  disabled?: boolean;
+  onClarify?: (text: string) => void;
 };
 
-export default function InlineAgentRun({ finalAnswer, pending = false, run }: InlineAgentRunProps) {
+export default function InlineAgentRun({ finalAnswer, pending = false, run, disabled, onClarify }: InlineAgentRunProps) {
   const steps = run?.steps ?? [];
   const flowStep = steps.find((step) => step.kind === "flow");
   const visibleSteps = steps.filter((step) => step.kind !== "flow");
   const running = pending || run?.status === "running";
+
+  const clarificationStep = steps.find((step) => step.kind === "clarification");
+  const clarificationQuestions = parseClarificationQuestions(clarificationStep);
+  const showClarification = !running && Boolean(onClarify) && clarificationQuestions.length > 0;
 
   return (
     <div className="codex-run">
@@ -49,7 +56,10 @@ export default function InlineAgentRun({ finalAnswer, pending = false, run }: In
         {visibleSteps.map((step, index) => <StepActivity key={step.id} index={index} step={step} />)}
         {running ? <PendingActivity hasSteps={visibleSteps.length > 0} /> : null}
 
-        {!running ? <FinalAnswer message={finalAnswer} run={run} /> : null}
+        {!running && !showClarification ? <FinalAnswer message={finalAnswer} run={run} /> : null}
+        {showClarification ? (
+          <ClarificationForm questions={clarificationQuestions} disabled={disabled} onSubmit={onClarify!} />
+        ) : null}
         {!running && flowStep ? <FlowDiagramStep step={flowStep} /> : null}
       </Space>
     </div>
@@ -136,6 +146,26 @@ function FlowDiagramStep({ step }: { step: AgentStep }) {
       </Space>
     </div>
   );
+}
+
+function parseClarificationQuestions(step?: AgentStep): ClarificationQuestion[] {
+  const questions = step?.data.questions;
+  if (!Array.isArray(questions)) return [];
+
+  return questions
+    .map((item): ClarificationQuestion | null => {
+      if (!item || typeof item !== "object") return null;
+      const record = item as Record<string, unknown>;
+      if (typeof record.question !== "string") return null;
+
+      return {
+        id: typeof record.id === "string" ? record.id : undefined,
+        question: record.question,
+        type: record.type === "choice" ? "choice" : "text",
+        options: Array.isArray(record.options) ? record.options.map(String) : undefined,
+      };
+    })
+    .filter((item): item is ClarificationQuestion => item !== null);
 }
 
 function answerFromRun(run?: AgentRun) {

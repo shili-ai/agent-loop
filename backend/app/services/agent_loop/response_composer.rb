@@ -36,7 +36,10 @@ module AgentLoop
 
     def clarification_answer
       lines = ["Mình cần thêm một chút ngữ cảnh để trả lời chính xác hơn:", ""]
-      @clarification[:questions].each { |question| lines << "- #{question}" }
+      @clarification[:questions].each do |question|
+        text = question.is_a?(Hash) ? question[:question] : question
+        lines << "- #{text}"
+      end
       lines.join("\n")
     end
 

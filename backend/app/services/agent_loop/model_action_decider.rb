@@ -91,21 +91,11 @@ module AgentLoop
     end
 
     def system_prompt
-      <<~PROMPT
-        Bạn là bộ điều phối (planner) của một agent presales.
-        Mỗi vòng bạn chỉ chọn ĐÚNG MỘT action tiếp theo dựa trên trạng thái hiện tại.
-        Các action hợp lệ:
-        #{action_catalog}
-
-        Nguyên tắc:
-        - Muốn soạn bản nháp thì phải có tài liệu trước (chạy search_documents).
-        - Không lặp lại action đã hoàn thành nếu không thật sự cần.
-        - Khi đã đủ dữ liệu để trả lời, chọn final_answer.
-        - Nếu yêu cầu quá ngắn/mơ hồ, chọn ask_clarification.
-
-        Chỉ trả về JSON đúng định dạng, không thêm chữ nào khác:
-        {"action": "<một trong: #{ACTIONS.keys.join(', ')}>", "reason": "<lý do ngắn bằng tiếng Việt>"}
-      PROMPT
+      PromptTemplate.render(
+        "decider_system",
+        action_catalog: action_catalog,
+        action_keys: ACTIONS.keys.join(", ")
+      )
     end
 
     def action_catalog
@@ -113,19 +103,17 @@ module AgentLoop
     end
 
     def user_prompt
-      <<~PROMPT
-        Yêu cầu người dùng: "#{@message}"
-        Ý định đã phân loại: #{@intent}
-        Mục tiêu plan: #{@plan&.dig(:goal)}
-        Vòng hiện tại: #{@iteration}/#{@max_iterations}
-
-        Trạng thái hiện tại:
-        - Số tài liệu đã tìm được: #{documents.count}
-        - Đã có bản nháp: #{artifact? ? 'có' : 'chưa'}
-        - Đã hỏi làm rõ: #{clarified? ? 'rồi' : 'chưa'}
-
-        Hãy chọn action tiếp theo.
-      PROMPT
+      PromptTemplate.render(
+        "decider_user",
+        message: @message,
+        intent: @intent,
+        goal: @plan&.dig(:goal),
+        iteration: @iteration,
+        max_iterations: @max_iterations,
+        documents_count: documents.count,
+        has_artifact: artifact? ? "có" : "chưa",
+        clarified: clarified? ? "rồi" : "chưa"
+      )
     end
 
     def markdown(action, reason, source)

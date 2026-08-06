@@ -189,6 +189,7 @@ export default function AgentChat() {
           sending={sending}
           onChangeMessage={setMessage}
           onSend={() => handleSend()}
+          onClarify={(text) => handleSend(text)}
         />
       }
       newConversationModal={
