@@ -1,0 +1,56 @@
+import { MessageOutlined, PlusOutlined } from "@ant-design/icons";
+import { Button, Card, Empty, List, Space, Typography } from "antd";
+import type { AgentConversationSummary } from "../../types/agent";
+
+type ConversationListProps = {
+  activeId?: number;
+  conversations: AgentConversationSummary[];
+  loading: boolean;
+  onCreate: () => void;
+  onSelect: (id: number) => void;
+};
+
+export default function ConversationList({
+  activeId,
+  conversations,
+  loading,
+  onCreate,
+  onSelect,
+}: ConversationListProps) {
+  return (
+    <Card
+      size="small"
+      title="Chats"
+      extra={
+        <Button type="primary" size="small" icon={<PlusOutlined />} onClick={onCreate}>
+          New
+        </Button>
+      }
+    >
+      {conversations.length ? (
+        <List
+          loading={loading}
+          dataSource={conversations}
+          renderItem={(conversation) => (
+            <List.Item
+              className={conversation.id === activeId ? "conversation-item active" : "conversation-item"}
+              onClick={() => onSelect(conversation.id)}
+            >
+              <Space align="start">
+                <MessageOutlined />
+                <Space direction="vertical" size={0}>
+                  <Typography.Text strong>{conversation.title}</Typography.Text>
+                  <Typography.Text type="secondary">
+                    {conversation.customer_name || "No customer"} · {conversation.industry}
+                  </Typography.Text>
+                </Space>
+              </Space>
+            </List.Item>
+          )}
+        />
+      ) : (
+        <Empty description="Chua co chat nao" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+      )}
+    </Card>
+  );
+}
