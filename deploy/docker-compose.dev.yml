@@ -27,6 +27,8 @@ services:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
       WATCHPACK_POLLING: "true"
       CHOKIDAR_USEPOLLING: "true"
+      # Cho pnpm chạy không cần TTY (tránh ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY)
+      CI: "true"
     ports:
       - "${FRONTEND_PORT:-13000}:3000"
     volumes:

@@ -1,3 +1,5 @@
+require "time"
+
 module AgentLoop
   class Runner
     MAX_ITERATIONS = 8
@@ -49,7 +51,7 @@ module AgentLoop
       create_step(run, "plan", "Lập plan", "Đã tạo plan ngắn cho agent loop.", plan)
 
       state = { documents: [], artifact: nil, artifact_tool: nil, clarification: nil }
-      loop_result = run_dynamic_loop(run, intent, context, state)
+      loop_result = run_dynamic_loop(run, intent, state, plan)
       tool_result = build_tool_result(state)
       model_answer = loop_result[:action] == "final_answer" ? generate_model_answer(run, intent, tool_result, context) : nil
       answer = ResponseComposer.new(
@@ -68,6 +70,13 @@ module AgentLoop
         "Đã lưu câu trả lời cuối cho giao diện chat.",
         { message_id: assistant_message.id, output: answer }
       )
+      create_step(
+        run,
+        "flow",
+        "Vẽ sơ đồ luồng",
+        "Đã tạo Mermaid flow từ các bước agent vừa chạy.",
+        RunFlowBuilder.new(run: run).call
+      )
 
       run
     rescue StandardError => e
@@ -85,39 +94,29 @@ module AgentLoop
 
     private
 
-    def run_dynamic_loop(run, intent, context, state)
+    def run_dynamic_loop(run, intent, state, plan)
       MAX_ITERATIONS.times do |index|
         iteration = index + 1
-        decision = ActionDecider.new(
+        decision = ModelActionDecider.new(
           intent: intent,
           message: @content,
           state: state,
           iteration: iteration,
-          max_iterations: MAX_ITERATIONS
+          max_iterations: MAX_ITERATIONS,
+          plan: plan
         ).call
         create_step(
           run,
           "decision",
           "Chọn action tiếp theo",
-          "Vòng #{iteration}: agent chọn #{decision[:action]}.",
-          decision
+          "Vòng #{iteration}: #{decision[:source] == 'model' ? 'model' : 'agent'} chọn #{decision[:action]}.",
+          decision.merge(iteration: iteration)
         )
 
-        execute_action(run, intent, state, decision[:action])
         return decision if decision[:action] == "final_answer"
 
-        evaluation = LoopEvaluator.new(intent: intent, state: state, last_action: decision[:action]).call
-        create_step(
-          run,
-          "evaluation",
-          "Đánh giá tiến độ",
-          evaluation[:reason],
-          evaluation.merge(last_action: decision[:action])
-        )
-        if evaluation[:done]
-          final_action = decision[:action] == "ask_clarification" ? "ask_clarification" : "final_answer"
-          return { action: final_action, reason: evaluation[:reason] }
-        end
+        execute_action(run, intent, state, decision[:action])
+        return decision if decision[:action] == "ask_clarification"
       end
 
       { action: "final_answer", reason: "Đã chạm giới hạn vòng lặp an toàn." }
@@ -194,12 +193,19 @@ module AgentLoop
         "llm",
         "Gọi model local",
         "Đang gọi #{generator.client.model} qua Ollama.",
-        { provider: "ollama", model: generator.client.model, output: nil, status: "running" }
+        {
+          provider: "ollama",
+          model: generator.client.model,
+          output: nil,
+          status: "running",
+          request_started_at: Time.now.utc.iso8601(6)
+        }
       )
-      answer = generator.call
+      result = generator.call_with_metrics
+      answer = result[:content]
       step.update!(
         summary: "Đã tạo câu trả lời bằng #{generator.client.model}.",
-        data: { provider: "ollama", model: generator.client.model, output: answer, status: "completed" }
+        data: result[:metrics].merge(output: answer, status: "completed")
       )
       answer
     rescue StandardError => e

@@ -13,6 +13,10 @@ module AgentLoop
       @client.chat(messages: messages)
     end
 
+    def call_with_metrics
+      @client.chat_with_metrics(messages: messages)
+    end
+
     private
 
     def messages

@@ -7,7 +7,9 @@
 
 Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
-    origins ENV.fetch("FRONTEND_ORIGIN", "http://localhost:3000")
+    # Cho phép cả 3000 và 3001 để FE chạy ở cổng nào cũng gọi được API.
+    # FRONTEND_ORIGIN (phân tách bằng dấu phẩy) sẽ override khi cần.
+    origins(*ENV.fetch("FRONTEND_ORIGIN", "http://localhost:3000,http://localhost:3001").split(","))
 
     resource "*",
       headers: :any,

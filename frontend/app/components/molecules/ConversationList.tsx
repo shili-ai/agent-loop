@@ -61,14 +61,11 @@ export default function ConversationList({
                 </Popconfirm>,
               ]}
             >
-              <Space align="start">
+              <Space align="center" className="conversation-title-row">
                 <MessageOutlined />
-                <Space direction="vertical" size={0}>
-                  <Typography.Text strong>{conversation.title}</Typography.Text>
-                  <Typography.Text type="secondary">
-                    {conversation.customer_name || "Chưa có khách hàng"} · {conversation.industry}
-                  </Typography.Text>
-                </Space>
+                <Typography.Text strong ellipsis className="conversation-title">
+                  {conversation.title}
+                </Typography.Text>
               </Space>
             </List.Item>
           )}

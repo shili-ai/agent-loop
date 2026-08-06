@@ -208,6 +208,41 @@ body {
   max-width: 760px;
 }
 
+.agent-flow-card {
+  max-width: 760px;
+  border: 1px solid #e1e8ee;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 14px 16px;
+}
+
+.mermaid-diagram {
+  overflow-x: auto;
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+  background: #fbfdfe;
+  padding: 12px;
+}
+
+.mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-loading,
+.mermaid-fallback {
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #64748b;
+  padding: 12px;
+}
+
+.mermaid-fallback {
+  overflow-x: auto;
+  font-size: 12px;
+}
+
 .agent-step-card {
   border: 1px solid #e5e7eb;
   border-left: 3px solid #9db7c3;
@@ -216,9 +251,32 @@ body {
   padding: 12px 14px;
 }
 
+.agent-step-card.tool {
+  border-left-color: #0f766e;
+  background: #fcfffd;
+}
+
+.agent-step-card.model {
+  border-left-color: #2563eb;
+  background: #fbfdff;
+}
+
+.agent-step-card.thinking {
+  border-left-color: #b7791f;
+  background: #fffdf7;
+}
+
+.agent-step-card.final {
+  border-left-color: #176b87;
+}
+
+.agent-step-card.error {
+  border-left-color: #dc2626;
+  background: #fffafa;
+}
+
 .agent-step-card.compact {
   border-color: #edf2f7;
-  border-left-color: #cbd5e1;
   background: #fcfcfd;
   padding: 10px 12px;
 }
@@ -245,6 +303,26 @@ body {
   color: #176b87;
 }
 
+.agent-step-card.tool .agent-step-icon {
+  background: #ecfdf5;
+  color: #0f766e;
+}
+
+.agent-step-card.model .agent-step-icon {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.agent-step-card.thinking .agent-step-icon {
+  background: #fffbeb;
+  color: #b7791f;
+}
+
+.agent-step-card.error .agent-step-icon {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
 .agent-step-heading {
   display: grid;
   gap: 3px;
@@ -257,6 +335,89 @@ body {
   background: #f8fafc;
   color: #475569;
   font-size: 12px;
+}
+
+.step-kind {
+  margin-inline-end: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.step-kind.tool {
+  border-color: #99f6e4;
+  background: #ecfdf5;
+  color: #0f766e;
+}
+
+.step-kind.model {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.step-kind.thinking {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.step-kind.final,
+.step-kind.agent {
+  border-color: #d7e8ef;
+  background: #eef7fa;
+  color: #176b87;
+}
+
+.step-kind.error {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.step-detail {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.step-io-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0 0 42px;
+  max-width: 760px;
+}
+
+.step-io-column {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 10px;
+  min-width: 0;
+}
+
+.step-io-column pre {
+  max-height: 220px;
+  overflow: auto;
+  margin: 8px 0 0;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #334155;
+  padding: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.model-metrics {
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #eff6ff;
+  padding: 8px 10px;
+}
+
+.model-metrics .ant-descriptions-item-label {
+  color: #1e40af;
+  font-weight: 600;
 }
 
 .activity-details-collapse,
@@ -391,7 +552,16 @@ body {
 .conversation-item {
   border-radius: 8px;
   cursor: pointer;
-  padding: 10px !important;
+  padding: 8px 10px !important;
+}
+
+.conversation-title-row {
+  min-width: 0;
+  width: 100%;
+}
+
+.conversation-title {
+  max-width: 210px;
 }
 
 .conversation-item:hover {
