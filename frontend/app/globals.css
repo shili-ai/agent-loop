@@ -24,3 +24,152 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.agent-shell {
+  min-height: 100vh;
+  background: #f4f7f9;
+}
+
+.agent-sidebar {
+  border-right: 1px solid #d9e2e7;
+  padding: 24px;
+}
+
+.agent-title {
+  margin: 0 0 4px;
+}
+
+.agent-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 20px;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.chat-column {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 16px;
+  min-width: 0;
+}
+
+.chat-header h4 {
+  margin: 0 0 4px;
+}
+
+.messages-card {
+  min-height: 0;
+}
+
+.messages-card .ant-card-body {
+  height: calc(100vh - 180px);
+  overflow: auto;
+  padding: 12px;
+}
+
+.empty-state {
+  height: 100%;
+  min-height: 300px;
+}
+
+.message-row {
+  border-block-end: 0 !important;
+  padding: 10px 0 !important;
+}
+
+.user-message-row {
+  justify-content: flex-end;
+}
+
+.message-flex {
+  width: 100%;
+  max-width: 760px;
+}
+
+.message-flex.reverse {
+  flex-direction: row-reverse;
+  margin-left: auto;
+}
+
+.message-bubble {
+  max-width: min(680px, 100%);
+  border: 1px solid #d9e2e7;
+  border-radius: 8px;
+  padding: 12px 14px;
+  white-space: pre-wrap;
+}
+
+.agent-bubble {
+  background: #ffffff;
+}
+
+.user-bubble {
+  background: #e6f4ff;
+  border-color: #91caff;
+}
+
+.agent-avatar {
+  background: #176b87;
+}
+
+.user-avatar {
+  background: #3f5f46;
+}
+
+.message-meta {
+  margin-bottom: 8px;
+}
+
+.message-content {
+  margin-bottom: 0 !important;
+}
+
+.composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.steps-panel {
+  height: calc(100vh - 48px);
+  overflow: auto;
+}
+
+.error-card {
+  border-color: #ffccc7;
+  color: #a8071a;
+}
+
+.full-width {
+  width: 100%;
+}
+
+@media (max-width: 980px) {
+  .agent-shell {
+    display: block;
+  }
+
+  .agent-sidebar {
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+  }
+
+  .agent-content {
+    grid-template-columns: 1fr;
+    min-height: auto;
+    padding: 16px;
+  }
+
+  .messages-card .ant-card-body,
+  .steps-panel {
+    height: auto;
+    max-height: none;
+  }
+
+  .composer {
+    grid-template-columns: 1fr;
+  }
+}
