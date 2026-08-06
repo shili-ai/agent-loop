@@ -25,14 +25,50 @@ module AgentLoop
       run = @run || create_run
 
       context = ContextBuilder.new(conversation: @conversation).call
-      create_step(run, "context", "Doc chat context", "Loaded recent conversation and customer metadata.", context)
+      create_step(
+        run,
+        "context",
+        "Doc chat context",
+        "Loaded recent conversation and customer metadata.",
+        context.merge(output: ContextNoteBuilder.new(context: context).call)
+      )
 
       intent = IntentClassifier.new(message: @content).call
       run.update!(intent: intent)
-      create_step(run, "reasoning", "Phan loai intent", "Detected intent: #{intent}.", { intent: intent })
+      create_step(
+        run,
+        "reasoning",
+        "Phan loai intent",
+        "Detected intent: #{intent}.",
+        { intent: intent, output: IntentNoteBuilder.new(intent: intent, message: @content).call }
+      )
 
-      tool_result = ToolRouter.new(intent: intent, message: @content).call
-      create_step(run, "tool", "Goi dummy tools", "Executed #{tool_result[:tools].join(', ')}.", tool_result)
+      documents = DummyDocumentSearch.new(query: @content).call
+      create_step(
+        run,
+        "document_search",
+        "Tim tai lieu",
+        "Found #{documents.count} relevant dummy documents.",
+        { tools: ["document_search"], documents: documents, output: DocumentSearchNoteBuilder.new(documents: documents).call }
+      )
+
+      artifact_result = ArtifactBuilder.new(intent: intent, documents: documents).call
+      tool_result = {
+        tools: ["document_search", artifact_result[:tool]],
+        documents: documents,
+        artifact: artifact_result[:artifact]
+      }
+      create_step(
+        run,
+        "artifact",
+        "Draft artifact",
+        "Prepared #{artifact_result[:artifact][:title]} from retrieved evidence.",
+        {
+          tools: [artifact_result[:tool]],
+          artifact: artifact_result[:artifact],
+          output: artifact_result[:output]
+        }
+      )
 
       model_answer = generate_model_answer(run, intent, tool_result, context)
       answer = ResponseComposer.new(
@@ -74,10 +110,12 @@ module AgentLoop
 
     def generate_model_answer(run, intent, tool_result, context)
       generator = ModelAnswerGenerator.new(
-        intent: intent,
-        tool_result: tool_result,
-        user_message: @content,
-        context: context
+        brief: FinalBriefBuilder.new(
+          user_message: @content,
+          intent: intent,
+          context: context,
+          tool_result: tool_result
+        ).call
       )
       step = create_step(
         run,

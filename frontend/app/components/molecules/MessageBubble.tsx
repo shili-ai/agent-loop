@@ -1,6 +1,7 @@
 import { FileSearchOutlined, RobotOutlined, UserOutlined } from "@ant-design/icons";
 import { Avatar, Flex, List, Space, Typography } from "antd";
 import type { AgentMessage } from "../../types/agent";
+import MarkdownContent from "../atoms/MarkdownContent";
 
 type MessageBubbleProps = {
   message: AgentMessage;
@@ -21,7 +22,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
             {isUser ? <UserOutlined /> : <FileSearchOutlined />}
             <Typography.Text strong>{isUser ? "You" : "Agent"}</Typography.Text>
           </Space>
-          <Typography.Paragraph className="message-content">{message.content}</Typography.Paragraph>
+          <MarkdownContent className="markdown-content message-content">{message.content}</MarkdownContent>
         </div>
       </Flex>
     </List.Item>

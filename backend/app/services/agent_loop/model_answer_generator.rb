@@ -2,11 +2,8 @@ require "json"
 
 module AgentLoop
   class ModelAnswerGenerator
-    def initialize(intent:, tool_result:, user_message:, context:)
-      @intent = intent
-      @tool_result = tool_result
-      @user_message = user_message
-      @context = context
+    def initialize(brief:)
+      @brief = brief
       @client = LocalModelClient.new
     end
 
@@ -26,7 +23,7 @@ module AgentLoop
         },
         {
           role: "user",
-          content: user_prompt
+          content: synthesis_prompt
         }
       ]
     end
@@ -35,33 +32,26 @@ module AgentLoop
       <<~PROMPT
         You are a senior software presales assistant.
         Reply in Vietnamese.
-        Be concise, practical, and sales-useful.
-        Use only the provided tool results as evidence.
+        Write Markdown.
+        Synthesize only the provided final brief.
+        Do not invent sources, numbers, or capabilities.
+        Keep the answer concise, practical, and sales-useful.
         If information is missing, ask for the missing details at the end.
         Keep dummy source names visible so the user can see what evidence was used.
       PROMPT
     end
 
-    def user_prompt
+    def synthesis_prompt
       <<~PROMPT
-        User request:
-        #{@user_message}
+        Final brief:
+        #{JSON.pretty_generate(@brief)}
 
-        Conversation context:
-        #{format_context}
-
-        Detected intent:
-        #{@intent}
-
-        Tool result:
-        #{JSON.pretty_generate(@tool_result)}
-
-        Write the final assistant answer for the chat.
+        Create the final chat answer in this structure:
+        1. Short direct answer.
+        2. Recommended presales content as bullets or a compact table.
+        3. Evidence used.
+        4. Missing details to ask, only if the brief contains missing_context.
       PROMPT
-    end
-
-    def format_context
-      JSON.pretty_generate(@context)
     end
   end
 end

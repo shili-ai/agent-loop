@@ -10,6 +10,7 @@ import {
 import { Collapse, Descriptions, List, Space, Typography } from "antd";
 import type { ReactNode } from "react";
 import type { AgentMessage, AgentRun, AgentStep } from "../../types/agent";
+import MarkdownContent from "../atoms/MarkdownContent";
 
 type InlineAgentRunProps = {
   finalAnswer?: AgentMessage;
@@ -75,7 +76,7 @@ function FinalAnswer({ message, run }: { message?: AgentMessage; run?: AgentRun 
   const answer = message?.content ?? answerFromRun(run);
   if (!answer) return null;
 
-  return <Typography.Paragraph className="codex-final-answer">{answer}</Typography.Paragraph>;
+  return <MarkdownContent className="markdown-content codex-final-answer">{answer}</MarkdownContent>;
 }
 
 function answerFromRun(run?: AgentRun) {
@@ -87,6 +88,8 @@ function answerFromRun(run?: AgentRun) {
 function stepIcon(step: AgentStep) {
   if (step.kind === "context") return <FileSearchOutlined />;
   if (step.kind === "reasoning") return <BulbOutlined />;
+  if (step.kind === "document_search") return <FileSearchOutlined />;
+  if (step.kind === "artifact") return <ToolOutlined />;
   if (step.kind === "tool") return <ToolOutlined />;
   if (step.kind === "llm") return <RobotOutlined />;
   if (step.kind === "answer") return <CheckCircleOutlined />;
@@ -97,6 +100,8 @@ function stepIcon(step: AgentStep) {
 function stepLabel(step: AgentStep) {
   if (step.kind === "context") return "Read context";
   if (step.kind === "reasoning") return "Reasoned about request";
+  if (step.kind === "document_search") return "Searched documents";
+  if (step.kind === "artifact") return "Drafted artifact";
   if (step.kind === "tool") return "Ran tools";
   if (step.kind === "llm") return "Called local model";
   if (step.kind === "answer") return "Prepared final answer";
@@ -108,6 +113,10 @@ function normalizeOutput(step: AgentStep): ReactNode {
   if (step.kind === "answer") return null;
   if (step.kind === "tool") return <ToolOutput data={step.data} />;
 
+  if (typeof step.data.output === "string" && step.data.output.trim() && step.kind !== "llm") {
+    return <MarkdownContent className="markdown-content step-output-text">{step.data.output}</MarkdownContent>;
+  }
+
   if (step.kind === "llm" && typeof step.data.output === "string" && step.data.output.trim()) {
     return (
       <Collapse
@@ -118,7 +127,9 @@ function normalizeOutput(step: AgentStep): ReactNode {
           {
             key: "model-output",
             label: "Model draft",
-            children: <Typography.Paragraph className="step-output-text">{step.data.output}</Typography.Paragraph>,
+            children: (
+              <MarkdownContent className="markdown-content step-output-text">{step.data.output}</MarkdownContent>
+            ),
           },
         ]}
       />
@@ -144,9 +155,12 @@ function ToolOutput({ data }: { data: Record<string, unknown> }) {
   const tools = data.tools as string[] | undefined;
   const artifact = data.artifact as { title?: string; bullets?: string[] } | undefined;
   const documents = data.documents as Array<{ title?: string; type?: string; snippet?: string }> | undefined;
+  const markdownOutput = typeof data.output === "string" && data.output.trim() ? data.output : null;
 
   return (
     <Space direction="vertical" size={8} className="full-width">
+      {markdownOutput ? <MarkdownContent className="markdown-content step-output-text">{markdownOutput}</MarkdownContent> : null}
+
       {tools?.length ? (
         <Descriptions
           size="small"
