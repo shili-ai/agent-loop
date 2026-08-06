@@ -2,7 +2,7 @@ require "time"
 
 module AgentLoop
   class Runner
-    MAX_ITERATIONS = 8
+    MAX_ITERATIONS = 20
 
     def self.enqueue(conversation:, content:)
       user_message = conversation.agent_messages.create!(role: "user", content: content)
@@ -50,7 +50,7 @@ module AgentLoop
       plan = LoopPlanBuilder.new(intent: intent, message: @content).call
       create_step(run, "plan", "Lập plan", "Đã tạo plan ngắn cho agent loop.", plan)
 
-      state = { documents: [], artifact: nil, artifact_tool: nil, clarification: nil }
+      state = { documents: [], artifact: nil, artifact_tool: nil, clarification: nil, search_attempts: 0 }
       loop_result = run_dynamic_loop(run, intent, state, plan)
       tool_result = build_tool_result(state)
       model_answer = loop_result[:action] == "final_answer" ? generate_model_answer(run, intent, tool_result, context) : nil
@@ -127,6 +127,7 @@ module AgentLoop
       when "search_documents"
         documents = DummyDocumentSearch.new(query: @content).call
         state[:documents] = documents
+        state[:search_attempts] = state[:search_attempts].to_i + 1
         create_step(
           run,
           "document_search",

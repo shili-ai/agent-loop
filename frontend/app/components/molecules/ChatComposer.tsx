@@ -22,7 +22,7 @@ export default function ChatComposer({
         value={message}
         onChange={(event) => onChange(event.target.value)}
         placeholder="Ví dụ: Tìm tài liệu về bảo mật SaaS và tạo email follow-up cho khách enterprise"
-        autoSize={{ minRows: 2, maxRows: 4 }}
+        autoSize={{ minRows: 3, maxRows: 8 }}
         disabled={disabled}
         onPressEnter={(event) => {
           if (!event.shiftKey) {

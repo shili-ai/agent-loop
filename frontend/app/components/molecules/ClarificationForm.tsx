@@ -2,13 +2,7 @@
 
 import { Button, Input, Radio, Space, Typography } from "antd";
 import { useMemo, useState } from "react";
-
-export type ClarificationQuestion = {
-  id?: string;
-  question: string;
-  type?: "choice" | "text";
-  options?: string[];
-};
+import type { ClarificationQuestion } from "../../lib/clarification";
 
 const OTHER = "__other__";
 

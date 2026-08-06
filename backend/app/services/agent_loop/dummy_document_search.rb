@@ -32,20 +32,7 @@ module AgentLoop
     end
 
     def call
-      ranked_documents.first(3)
-    end
-
-    private
-
-    def ranked_documents
-      DOCUMENTS.sort_by do |document|
-        -score(document)
-      end
-    end
-
-    def score(document)
-      haystack = [document[:title], document[:type], document[:snippet]].join(" ").downcase
-      @query.split.count { |term| haystack.include?(term) }
+      []
     end
   end
 end

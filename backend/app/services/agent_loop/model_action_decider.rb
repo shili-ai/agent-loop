@@ -12,6 +12,9 @@ module AgentLoop
       "final_answer" => "Dừng vòng lặp và tổng hợp câu trả lời cuối cho người dùng."
     }.freeze
 
+    # Sau ngần này lần tìm tài liệu mà vẫn rỗng thì không cho tìm lại nữa.
+    MAX_SEARCH_ATTEMPTS = 2
+
     def initialize(intent:, message:, state:, iteration:, max_iterations:, plan:, client: LocalModelClient.new)
       @intent = intent
       @message = message
@@ -25,6 +28,12 @@ module AgentLoop
     def call
       return forced_final if @iteration >= @max_iterations
 
+      guard_repeated_search(decide)
+    end
+
+    private
+
+    def decide
       result = @client.chat_with_metrics(messages: messages, temperature: 0, format: "json")
       parsed = parse(result[:content])
       build(parsed[:action], parsed[:reason], source: "model", metrics: result[:metrics], raw: result[:content])
@@ -32,7 +41,25 @@ module AgentLoop
       fallback(e)
     end
 
-    private
+    # Chặn vòng lặp tìm tài liệu vô ích: nếu đã tìm đủ số lần mà vẫn không có
+    # tài liệu, ép chuyển sang bước tiếp theo thay vì tìm lại.
+    def guard_repeated_search(decision)
+      return decision unless decision[:action] == "search_documents"
+      return decision if documents.any?
+      return decision if search_attempts < MAX_SEARCH_ATTEMPTS
+
+      alternative =
+        if @intent == "document_search" || artifact?
+          "final_answer"
+        else
+          "draft_artifact"
+        end
+      build(
+        alternative,
+        "Đã tìm tài liệu #{search_attempts} lần nhưng không có kết quả; chuyển sang #{alternative} thay vì tìm lại.",
+        source: "guard"
+      )
+    end
 
     def forced_final
       build("final_answer", "Đã chạm giới hạn #{@max_iterations} vòng, dừng để tổng hợp.", source: "guard")
@@ -111,6 +138,7 @@ module AgentLoop
         iteration: @iteration,
         max_iterations: @max_iterations,
         documents_count: documents.count,
+        search_attempts: search_attempts,
         has_artifact: artifact? ? "có" : "chưa",
         clarified: clarified? ? "rồi" : "chưa"
       )
@@ -123,6 +151,10 @@ module AgentLoop
 
     def documents
       @state[:documents] || []
+    end
+
+    def search_attempts
+      @state[:search_attempts].to_i
     end
 
     def artifact?

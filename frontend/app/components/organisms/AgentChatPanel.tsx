@@ -1,7 +1,9 @@
 import { Card, Empty, Flex, List, Spin, Typography } from "antd";
+import { pendingClarification } from "../../lib/clarification";
 import type { AgentConversation, AgentMessage, AgentRun } from "../../types/agent";
 import RunStatusTag from "../atoms/RunStatusTag";
 import ChatComposer from "../molecules/ChatComposer";
+import ClarificationForm from "../molecules/ClarificationForm";
 import InlineAgentRun from "../molecules/InlineAgentRun";
 import MessageBubble from "../molecules/MessageBubble";
 
@@ -28,6 +30,8 @@ export default function AgentChatPanel({
   onSend,
   onClarify,
 }: AgentChatPanelProps) {
+  const clarificationQuestions = pendingClarification(latestRun);
+
   return (
     <div className="chat-column">
       <Flex justify="space-between" align="center" className="chat-header">
@@ -52,13 +56,7 @@ export default function AgentChatPanel({
               item.type === "message" ? (
                 <MessageBubble message={item.message} />
               ) : (
-                <InlineAgentRun
-                  finalAnswer={item.finalAnswer}
-                  pending={item.pending}
-                  run={item.run}
-                  disabled={disabled}
-                  onClarify={item.isLatest ? onClarify : undefined}
-                />
+                <InlineAgentRun finalAnswer={item.finalAnswer} pending={item.pending} run={item.run} />
               )
             }
           />
@@ -66,6 +64,12 @@ export default function AgentChatPanel({
           <Empty description={conversation ? "Gửi tin nhắn đầu tiên để chạy agent loop" : "Chọn hoặc tạo chat mới"} />
         )}
       </Card>
+
+      {clarificationQuestions.length > 0 ? (
+        <div className="clarification-dock">
+          <ClarificationForm questions={clarificationQuestions} disabled={disabled} onSubmit={onClarify} />
+        </div>
+      ) : null}
 
       <ChatComposer
         disabled={disabled}
@@ -80,10 +84,9 @@ export default function AgentChatPanel({
 
 type ChatItem =
   | { key: string; type: "message"; message: AgentMessage }
-  | { key: string; type: "run"; finalAnswer?: AgentMessage; pending?: boolean; run?: AgentRun; isLatest?: boolean };
+  | { key: string; type: "run"; finalAnswer?: AgentMessage; pending?: boolean; run?: AgentRun };
 
 function buildChatItems(conversation: AgentConversation, sending: boolean): ChatItem[] {
-  const latestRunId = conversation.runs.at(-1)?.id;
   const runsByUserMessageId = new Map(conversation.runs.map((run) => [run.user_message_id, run]));
   const messagesById = new Map(conversation.messages.map((message) => [message.id, message]));
   const assistantMessageIdsInRuns = new Set(
@@ -107,7 +110,6 @@ function buildChatItems(conversation: AgentConversation, sending: boolean): Chat
         type: "run",
         finalAnswer: run.assistant_message_id ? messagesById.get(run.assistant_message_id) : undefined,
         run,
-        isLatest: run.id === latestRunId,
       });
       return;
     }

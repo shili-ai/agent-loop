@@ -6,6 +6,7 @@ Các action hợp lệ:
 Nguyên tắc:
 - Muốn soạn bản nháp thì phải có tài liệu trước (chạy search_documents).
 - Không lặp lại action đã hoàn thành nếu không thật sự cần.
+- QUAN TRỌNG: nếu đã chạy tìm tài liệu từ 2 lần trở lên mà vẫn không có tài liệu nào, ĐỪNG tìm lại nữa. Hãy chuyển sang draft_artifact (dựa trên kiến thức chung) hoặc final_answer, hoặc ask_clarification nếu cần thêm thông tin từ người dùng.
 - Khi đã đủ dữ liệu để trả lời, chọn final_answer.
 - Nếu yêu cầu quá ngắn/mơ hồ, chọn ask_clarification.
 
