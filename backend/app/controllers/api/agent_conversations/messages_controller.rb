@@ -3,9 +3,9 @@ module Api
     class MessagesController < ApplicationController
       def create
         conversation = AgentConversation.find(params[:agent_conversation_id])
-        AgentLoop::Runner.new(conversation: conversation, content: message_params[:content]).call
+        AgentLoop::Runner.enqueue(conversation: conversation, content: message_params[:content])
 
-        render json: AgentConversationSerializer.new(conversation.reload).as_json, status: :created
+        render json: AgentConversationSerializer.new(conversation.reload).as_json, status: :accepted
       end
 
       private

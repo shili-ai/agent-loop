@@ -1,0 +1,45 @@
+services:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: ../deploy/backend.dev.Dockerfile
+    environment:
+      RAILS_ENV: development
+      RAILS_LOG_LEVEL: debug
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:13000}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
+    ports:
+      - "${BACKEND_PORT:-3001}:3000"
+    volumes:
+      - ../backend:/rails
+      - backend_bundle:/usr/local/bundle
+      - backend_storage_dev:/rails/storage
+    stdin_open: true
+    tty: true
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../deploy/frontend.dev.Dockerfile
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "${FRONTEND_PORT:-13000}:3000"
+    volumes:
+      - ../frontend:/app
+      - frontend_node_modules:/app/node_modules
+      - frontend_next:/app/.next
+    depends_on:
+      - backend
+    stdin_open: true
+    tty: true
+
+volumes:
+  backend_bundle:
+  backend_storage_dev:
+  frontend_node_modules:
+  frontend_next:

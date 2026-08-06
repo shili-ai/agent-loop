@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createConversation,
+  deleteConversation,
   getConversation,
   listConversations,
   sendConversationMessage,
@@ -19,6 +20,7 @@ import AgentSidebar from "./organisms/AgentSidebar";
 import AgentChatTemplate from "./templates/AgentChatTemplate";
 
 export default function AgentChat() {
+  const optimisticMessageId = useRef(-1);
   const [conversation, setConversation] = useState<AgentConversation | null>(null);
   const [conversations, setConversations] = useState<AgentConversationSummary[]>([]);
   const [creating, setCreating] = useState(false);
@@ -29,7 +31,11 @@ export default function AgentChat() {
   const [error, setError] = useState<string | null>(null);
 
   const latestRun = useMemo(() => conversation?.runs.at(-1), [conversation]);
-  const chatDisabled = loading || sending || !conversation;
+  const hasRunningRun = useMemo(
+    () => Boolean(conversation?.runs.some((run) => run.status === "running")),
+    [conversation]
+  );
+  const chatDisabled = loading || sending || hasRunningRun || !conversation;
 
   const refreshConversationList = useCallback(async () => {
     const items = await listConversations();
@@ -74,6 +80,22 @@ export default function AgentChat() {
     bootstrap();
   }, [bootstrap]);
 
+  useEffect(() => {
+    if (!conversation || !hasRunningRun) return;
+
+    const conversationId = conversation.id;
+    const interval = window.setInterval(async () => {
+      try {
+        const updated = await getConversation(conversationId);
+        setConversation((current) => (current?.id === conversationId ? updated : current));
+      } catch {
+        setError("Khong cap nhat duoc tien trinh agent realtime.");
+      }
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [conversation, hasRunningRun]);
+
   async function handleCreateConversation(input: NewConversationInput) {
     setCreating(true);
     setError(null);
@@ -91,11 +113,46 @@ export default function AgentChat() {
     }
   }
 
+  async function handleDeleteConversation(id: number) {
+    setLoading(true);
+    setError(null);
+
+    try {
+      await deleteConversation(id);
+      const remainingConversations = await refreshConversationList();
+      const nextConversation = remainingConversations.find((item) => item.id !== id) ?? remainingConversations[0];
+
+      if (conversation?.id === id) {
+        if (nextConversation) {
+          setConversation(await getConversation(nextConversation.id));
+        } else {
+          setConversation(null);
+        }
+        setMessage("");
+      }
+    } catch {
+      setError("Khong xoa duoc chat. Kiem tra Rails API.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleSend(value = message) {
     if (!conversation || !value.trim()) return;
 
+    const optimisticUserMessage = {
+      id: optimisticMessageId.current--,
+      role: "user" as const,
+      content: value.trim(),
+      created_at: "",
+    };
+
     setSending(true);
     setError(null);
+    setConversation({
+      ...conversation,
+      messages: [...conversation.messages, optimisticUserMessage],
+    });
 
     try {
       const updated = await sendConversationMessage(conversation.id, value.trim());
@@ -111,17 +168,15 @@ export default function AgentChat() {
 
   return (
     <AgentChatTemplate
-      latestRun={latestRun}
       errorNotice={<ErrorNotice message={error} />}
       sidebar={
         <AgentSidebar
           activeConversation={conversation}
           conversations={conversations}
-          disabled={chatDisabled}
           loading={loading}
           onCreateConversation={() => setModalOpen(true)}
+          onDeleteConversation={handleDeleteConversation}
           onSelectConversation={selectConversation}
-          onSelectPrompt={handleSend}
         />
       }
       chatPanel={

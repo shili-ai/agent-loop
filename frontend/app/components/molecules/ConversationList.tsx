@@ -1,5 +1,5 @@
-import { MessageOutlined, PlusOutlined } from "@ant-design/icons";
-import { Button, Card, Empty, List, Space, Typography } from "antd";
+import { DeleteOutlined, MessageOutlined, PlusOutlined } from "@ant-design/icons";
+import { Button, Card, Empty, List, Popconfirm, Space, Typography } from "antd";
 import type { AgentConversationSummary } from "../../types/agent";
 
 type ConversationListProps = {
@@ -7,6 +7,7 @@ type ConversationListProps = {
   conversations: AgentConversationSummary[];
   loading: boolean;
   onCreate: () => void;
+  onDelete: (id: number) => void;
   onSelect: (id: number) => void;
 };
 
@@ -15,6 +16,7 @@ export default function ConversationList({
   conversations,
   loading,
   onCreate,
+  onDelete,
   onSelect,
 }: ConversationListProps) {
   return (
@@ -35,6 +37,29 @@ export default function ConversationList({
             <List.Item
               className={conversation.id === activeId ? "conversation-item active" : "conversation-item"}
               onClick={() => onSelect(conversation.id)}
+              actions={[
+                <Popconfirm
+                  key="delete"
+                  title="Xoá chat này?"
+                  description="Toàn bộ messages và agent runs của chat sẽ bị xoá."
+                  okText="Xoá"
+                  cancelText="Huỷ"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={(event) => {
+                    event?.stopPropagation();
+                    onDelete(conversation.id);
+                  }}
+                  onCancel={(event) => event?.stopPropagation()}
+                >
+                  <Button
+                    danger
+                    size="small"
+                    type="text"
+                    icon={<DeleteOutlined />}
+                    onClick={(event) => event.stopPropagation()}
+                  />
+                </Popconfirm>,
+              ]}
             >
               <Space align="start">
                 <MessageOutlined />

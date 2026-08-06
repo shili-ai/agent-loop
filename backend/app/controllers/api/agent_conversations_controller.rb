@@ -18,6 +18,13 @@ module Api
       render json: AgentConversationSerializer.new(conversation).as_json, status: :created
     end
 
+    def destroy
+      conversation = AgentConversation.find(params[:id])
+      conversation.destroy!
+
+      head :no_content
+    end
+
     private
 
     def conversation_params

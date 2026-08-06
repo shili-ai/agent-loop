@@ -1,12 +1,9 @@
 import { ConfigProvider, Layout, theme } from "antd";
 import type { ReactNode } from "react";
-import AgentStepTimeline from "../molecules/AgentStepTimeline";
-import type { AgentRun } from "../../types/agent";
 
 type AgentChatTemplateProps = {
   chatPanel: ReactNode;
   errorNotice: ReactNode;
-  latestRun?: AgentRun;
   newConversationModal: ReactNode;
   sidebar: ReactNode;
 };
@@ -14,7 +11,6 @@ type AgentChatTemplateProps = {
 export default function AgentChatTemplate({
   chatPanel,
   errorNotice,
-  latestRun,
   newConversationModal,
   sidebar,
 }: AgentChatTemplateProps) {
@@ -36,7 +32,6 @@ export default function AgentChatTemplate({
             {errorNotice}
             {chatPanel}
           </div>
-          <AgentStepTimeline run={latestRun} />
         </Layout.Content>
         {newConversationModal}
       </Layout>

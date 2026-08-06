@@ -1,7 +1,8 @@
 import { Card, Empty, Flex, List, Spin, Typography } from "antd";
-import type { AgentConversation, AgentRun } from "../../types/agent";
+import type { AgentConversation, AgentMessage, AgentRun } from "../../types/agent";
 import RunStatusTag from "../atoms/RunStatusTag";
 import ChatComposer from "../molecules/ChatComposer";
+import InlineAgentRun from "../molecules/InlineAgentRun";
 import MessageBubble from "../molecules/MessageBubble";
 
 type AgentChatPanelProps = {
@@ -43,7 +44,20 @@ export default function AgentChatPanel({
             <Spin />
           </Flex>
         ) : conversation?.messages.length ? (
-          <List dataSource={conversation.messages} renderItem={(item) => <MessageBubble message={item} />} />
+          <List
+            dataSource={buildChatItems(conversation, sending)}
+            renderItem={(item) =>
+              item.type === "message" ? (
+                <MessageBubble message={item.message} />
+              ) : (
+                <InlineAgentRun
+                  finalAnswer={item.finalAnswer}
+                  pending={item.pending}
+                  run={item.run}
+                />
+              )
+            }
+          />
         ) : (
           <Empty description={conversation ? "Gui message dau tien de chay agent loop" : "Chon hoac tao chat moi"} />
         )}
@@ -58,4 +72,45 @@ export default function AgentChatPanel({
       />
     </div>
   );
+}
+
+type ChatItem =
+  | { key: string; type: "message"; message: AgentMessage }
+  | { key: string; type: "run"; finalAnswer?: AgentMessage; pending?: boolean; run?: AgentRun };
+
+function buildChatItems(conversation: AgentConversation, sending: boolean): ChatItem[] {
+  const runsByUserMessageId = new Map(conversation.runs.map((run) => [run.user_message_id, run]));
+  const messagesById = new Map(conversation.messages.map((message) => [message.id, message]));
+  const assistantMessageIdsInRuns = new Set(
+    conversation.runs
+      .map((run) => run.assistant_message_id)
+      .filter((id): id is number => typeof id === "number")
+  );
+  const items: ChatItem[] = [];
+
+  conversation.messages.forEach((message) => {
+    if (message.role === "assistant" && assistantMessageIdsInRuns.has(message.id)) return;
+
+    items.push({ key: `message-${message.id}`, type: "message", message });
+
+    if (message.role !== "user") return;
+
+    const run = runsByUserMessageId.get(message.id);
+    if (run) {
+      items.push({
+        key: `run-${run.id}`,
+        type: "run",
+        finalAnswer: run.assistant_message_id ? messagesById.get(run.assistant_message_id) : undefined,
+        run,
+      });
+      return;
+    }
+
+    const isLatestMessage = conversation.messages.at(-1)?.id === message.id;
+    if (sending && isLatestMessage) {
+      items.push({ key: "pending-run", type: "run", pending: true });
+    }
+  });
+
+  return items;
 }

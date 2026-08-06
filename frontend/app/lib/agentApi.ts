@@ -19,6 +19,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(`API request failed: ${response.status}`);
   }
 
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   return response.json() as Promise<T>;
 }
 
@@ -40,6 +44,12 @@ export function createConversation(input: NewConversationInput) {
         customer_name: input.customer_name,
       },
     }),
+  });
+}
+
+export function deleteConversation(id: number) {
+  return request<void>(`/api/agent_conversations/${id}`, {
+    method: "DELETE",
   });
 }
 

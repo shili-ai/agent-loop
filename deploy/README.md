@@ -16,3 +16,15 @@ Mac dinh:
 Neu port mac dinh dang ban, sua `FRONTEND_PORT` hoac `BACKEND_PORT` trong `.env`.
 
 Rails dung SQLite production va luu database trong Docker volume `backend_storage`.
+
+## Development hot reload
+
+```sh
+docker compose -f deploy/docker-compose.dev.yml --env-file deploy/.env up --build
+```
+
+Mac dinh dev:
+
+- Frontend: http://localhost:13000
+- Backend: http://localhost:3001
+

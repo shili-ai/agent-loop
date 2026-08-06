@@ -1,12 +1,15 @@
 module AgentLoop
   class ResponseComposer
-    def initialize(intent:, tool_result:, user_message:)
+    def initialize(intent:, tool_result:, user_message:, model_answer: nil)
       @intent = intent
       @tool_result = tool_result
       @user_message = user_message
+      @model_answer = model_answer
     end
 
     def call
+      return @model_answer if @model_answer.present?
+
       artifact = @tool_result[:artifact]
       lines = []
 
