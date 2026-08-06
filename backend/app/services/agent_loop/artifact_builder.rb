@@ -39,7 +39,7 @@ module AgentLoop
       lines = ["### #{artifact[:title]}"]
       artifact[:bullets].each { |bullet| lines << "- #{bullet}" }
       lines << ""
-      lines << "**Sources:** #{artifact[:sources].join(', ')}"
+      lines << "**Nguồn:** #{artifact[:sources].join(', ')}"
       lines.join("\n")
     end
 
@@ -47,9 +47,9 @@ module AgentLoop
       {
         title: "Battlecard nhanh",
         bullets: [
-          "Neo vao ket qua kinh doanh: rut ngan lead response time, tang visibility pipeline.",
-          "Diem khac biet: workflow presales gan voi tai lieu va template co nguon.",
-          "Cau hoi phan bien: he thong hien tai mat bao lau de tao proposal dung ngu canh?"
+          "Neo vào kết quả kinh doanh: rút ngắn thời gian phản hồi lead và tăng visibility pipeline.",
+          "Điểm khác biệt: workflow presales gắn với tài liệu và template có nguồn.",
+          "Câu hỏi phản biện: hệ thống hiện tại mất bao lâu để tạo proposal đúng ngữ cảnh?"
         ],
         sources: source_titles
       }
@@ -57,12 +57,12 @@ module AgentLoop
 
     def proposal_outline
       {
-        title: "Proposal outline",
+        title: "Outline proposal",
         bullets: [
-          "Executive summary theo pain point va muc tieu mua hang.",
-          "Scope: discovery, integration, workflow automation, enablement, rollout.",
+          "Executive summary theo pain point và mục tiêu mua hàng.",
+          "Scope: discovery, tích hợp, workflow automation, enablement, rollout.",
           "Timeline 4 pha: assess, configure, pilot, scale.",
-          "Assumptions va next steps de chot meeting ky thuat."
+          "Assumptions và next steps để chốt meeting kỹ thuật."
         ],
         sources: source_titles
       }
@@ -72,9 +72,9 @@ module AgentLoop
       {
         title: "Email follow-up",
         bullets: [
-          "Cam on khach hang ve buoi discovery.",
-          "Tom tat 2-3 pain points va tie-in voi tai lieu lien quan.",
-          "De xuat next step: 30 phut workshop scope va success metrics."
+          "Cảm ơn khách hàng về buổi discovery.",
+          "Tóm tắt 2-3 pain point và liên kết với tài liệu liên quan.",
+          "Đề xuất next step: workshop 30 phút về scope và success metrics."
         ],
         sources: source_titles
       }
@@ -82,11 +82,11 @@ module AgentLoop
 
     def rfp_answer
       {
-        title: "RFP answer draft",
+        title: "Bản nháp trả lời RFP",
         bullets: [
-          "Tra loi ngan gon truoc, sau do them bang chung tu tai lieu.",
-          "Danh dau gia dinh neu cau hoi thieu thong tin deployment/security.",
-          "Gan moi claim voi source de presales review nhanh."
+          "Trả lời ngắn gọn trước, sau đó thêm bằng chứng từ tài liệu.",
+          "Đánh dấu giả định nếu câu hỏi thiếu thông tin deployment/security.",
+          "Gắn mỗi claim với source để presales review nhanh."
         ],
         sources: source_titles
       }
@@ -94,11 +94,11 @@ module AgentLoop
 
     def presales_advice
       {
-        title: "Presales recommendation",
+        title: "Khuyến nghị presales",
         bullets: [
-          "Lam ro buyer pain, current process, timeline, va decision criteria.",
-          "Dung case study/template gan nhat de tao cau tra loi co bang chung.",
-          "Neu thieu ngu canh, hoi lai ve customer segment, product, va deliverable mong muon."
+          "Làm rõ buyer pain, current process, timeline và decision criteria.",
+          "Dùng case study/template gần nhất để tạo câu trả lời có bằng chứng.",
+          "Nếu thiếu ngữ cảnh, hỏi lại về customer segment, product và deliverable mong muốn."
         ],
         sources: source_titles
       }

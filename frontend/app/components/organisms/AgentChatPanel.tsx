@@ -30,9 +30,9 @@ export default function AgentChatPanel({
     <div className="chat-column">
       <Flex justify="space-between" align="center" className="chat-header">
         <div>
-          <Typography.Title level={4}>Agent chat</Typography.Title>
+          <Typography.Title level={4}>Trợ lý presales</Typography.Title>
           <Typography.Text type="secondary">
-            Ask for documents, proposal outlines, battlecards, RFP answers, or follow-up emails.
+            Tìm tài liệu, soạn proposal, battlecard, câu trả lời RFP hoặc email follow-up.
           </Typography.Text>
         </div>
         <RunStatusTag status={latestRun?.status} />
@@ -59,7 +59,7 @@ export default function AgentChatPanel({
             }
           />
         ) : (
-          <Empty description={conversation ? "Gui message dau tien de chay agent loop" : "Chon hoac tao chat moi"} />
+          <Empty description={conversation ? "Gửi tin nhắn đầu tiên để chạy agent loop" : "Chọn hoặc tạo chat mới"} />
         )}
       </Card>
 

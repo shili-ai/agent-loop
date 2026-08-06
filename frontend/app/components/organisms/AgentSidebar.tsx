@@ -25,9 +25,9 @@ export default function AgentSidebar({
       <Flex vertical gap={18}>
         <div>
           <Typography.Title level={3} className="agent-title">
-            Presales Agent
+            Trợ lý Presales
           </Typography.Title>
-          <Typography.Text type="secondary">Rails agent loop with dummy tools</Typography.Text>
+          <Typography.Text type="secondary">Agent loop Rails với các công cụ demo</Typography.Text>
         </div>
 
         <ConversationList

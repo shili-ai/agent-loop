@@ -1,10 +1,10 @@
 module AgentLoop
   class IntentNoteBuilder
     LABELS = {
-      "proposal" => "Lap proposal / outline",
-      "battlecard" => "Tao battlecard",
-      "follow_up" => "Viet follow-up",
-      "rfp_answer" => "Draft cau tra loi RFP/RFI"
+      "proposal" => "Lập proposal / outline",
+      "battlecard" => "Tạo battlecard",
+      "follow_up" => "Viết follow-up",
+      "rfp_answer" => "Soạn câu trả lời RFP/RFI"
     }.freeze
 
     def initialize(intent:, message:)
@@ -14,10 +14,10 @@ module AgentLoop
 
     def call
       <<~MARKDOWN.strip
-        ### Intent
-        - Detected: `#{@intent}`
-        - Huong xu ly: #{LABELS.fetch(@intent, "Tu van presales tong quat")}
-        - Tin hieu tu user: "#{@message.truncate(120)}"
+        ### Ý định
+        - Phân loại: `#{@intent}`
+        - Hướng xử lý: #{LABELS.fetch(@intent, "Tư vấn presales tổng quát")}
+        - Tín hiệu từ người dùng: "#{@message.truncate(120)}"
       MARKDOWN
     end
   end

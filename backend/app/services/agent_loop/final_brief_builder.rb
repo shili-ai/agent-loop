@@ -37,6 +37,8 @@ module AgentLoop
 
     def draft
       artifact = @tool_result[:artifact]
+      return nil unless artifact
+
       {
         title: artifact[:title],
         bullets: artifact[:bullets],
@@ -47,7 +49,7 @@ module AgentLoop
     def missing_context
       return [] if @user_message.split.length >= 8
 
-      ["ten san pham", "loai khach hang", "output mong muon"]
+      ["tên sản phẩm", "loại khách hàng", "output mong muốn"]
     end
   end
 end

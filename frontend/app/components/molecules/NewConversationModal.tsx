@@ -18,9 +18,9 @@ export default function NewConversationModal({
 
   return (
     <Modal
-      title="New chat"
+      title="Tạo chat mới"
       open={open}
-      okText="Create"
+      okText="Tạo"
       confirmLoading={creating}
       onCancel={onCancel}
       onOk={() => form.submit()}
@@ -29,24 +29,24 @@ export default function NewConversationModal({
       <Form
         form={form}
         layout="vertical"
-        initialValues={{ title: "New presales chat", industry: "software" }}
+        initialValues={{ title: "Chat presales mới", industry: "Phần mềm" }}
         onFinish={onCreate}
       >
         <Form.Item
-          label="Title"
+          label="Tên chat"
           name="title"
-          rules={[{ required: true, message: "Nhap ten chat" }]}
+          rules={[{ required: true, message: "Nhập tên chat" }]}
         >
-          <Input placeholder="VD: ACME CRM proposal" />
+          <Input placeholder="VD: Proposal CRM cho ACME" />
         </Form.Item>
         <Form.Item
-          label="Industry"
+          label="Ngành"
           name="industry"
-          rules={[{ required: true, message: "Nhap nganh" }]}
+          rules={[{ required: true, message: "Nhập ngành" }]}
         >
-          <Input placeholder="software" />
+          <Input placeholder="Phần mềm" />
         </Form.Item>
-        <Form.Item label="Customer" name="customer_name">
+        <Form.Item label="Khách hàng" name="customer_name">
           <Input placeholder="VD: ACME" />
         </Form.Item>
       </Form>

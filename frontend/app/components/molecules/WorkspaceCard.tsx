@@ -7,11 +7,11 @@ type WorkspaceCardProps = {
 
 export default function WorkspaceCard({ conversation }: WorkspaceCardProps) {
   return (
-    <Card size="small" title="Workspace">
+    <Card size="small" title="Không gian làm việc">
       <Space direction="vertical" size={6}>
-        <Typography.Text strong>{conversation?.title ?? "No chat selected"}</Typography.Text>
-        <Typography.Text type="secondary">Industry: {conversation?.industry ?? "-"}</Typography.Text>
-        <Typography.Text type="secondary">Customer: {conversation?.customer_name ?? "-"}</Typography.Text>
+        <Typography.Text strong>{conversation?.title ?? "Chưa chọn chat"}</Typography.Text>
+        <Typography.Text type="secondary">Ngành: {conversation?.industry ?? "-"}</Typography.Text>
+        <Typography.Text type="secondary">Khách hàng: {conversation?.customer_name ?? "-"}</Typography.Text>
       </Space>
     </Card>
   );

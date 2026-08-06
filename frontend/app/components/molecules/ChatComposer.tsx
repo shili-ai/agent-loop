@@ -21,7 +21,7 @@ export default function ChatComposer({
       <Input.TextArea
         value={message}
         onChange={(event) => onChange(event.target.value)}
-        placeholder="Vi du: Tim tai lieu ve SaaS security va tao email follow-up cho khach enterprise"
+        placeholder="Ví dụ: Tìm tài liệu về bảo mật SaaS và tạo email follow-up cho khách enterprise"
         autoSize={{ minRows: 2, maxRows: 4 }}
         disabled={disabled}
         onPressEnter={(event) => {
@@ -38,7 +38,7 @@ export default function ChatComposer({
         loading={sending}
         disabled={!message.trim() || disabled}
       >
-        Send
+        Gửi
       </Button>
     </Form>
   );

@@ -30,14 +30,14 @@ module AgentLoop
 
     def system_prompt
       <<~PROMPT
-        You are a senior software presales assistant.
-        Reply in Vietnamese.
-        Write Markdown.
-        Synthesize only the provided final brief.
-        Do not invent sources, numbers, or capabilities.
-        Keep the answer concise, practical, and sales-useful.
-        If information is missing, ask for the missing details at the end.
-        Keep dummy source names visible so the user can see what evidence was used.
+        Bạn là trợ lý presales cấp senior cho ngành phần mềm.
+        Luôn trả lời bằng tiếng Việt có dấu, tự nhiên và dễ đọc.
+        Viết bằng Markdown.
+        Chỉ tổng hợp từ final brief được cung cấp.
+        Không tự bịa nguồn, số liệu hoặc năng lực sản phẩm.
+        Giữ câu trả lời ngắn gọn, thực dụng và hữu ích cho presales.
+        Nếu thiếu thông tin, hỏi các chi tiết còn thiếu ở cuối.
+        Giữ tên nguồn demo để người dùng thấy bằng chứng đã dùng.
       PROMPT
     end
 
@@ -46,11 +46,11 @@ module AgentLoop
         Final brief:
         #{JSON.pretty_generate(@brief)}
 
-        Create the final chat answer in this structure:
-        1. Short direct answer.
-        2. Recommended presales content as bullets or a compact table.
-        3. Evidence used.
-        4. Missing details to ask, only if the brief contains missing_context.
+        Hãy tạo câu trả lời cuối theo cấu trúc:
+        1. Trả lời trực tiếp thật ngắn.
+        2. Nội dung presales đề xuất, dùng bullet hoặc bảng ngắn.
+        3. Bằng chứng đã dùng.
+        4. Câu hỏi cần bổ sung, chỉ khi final brief có missing_context.
       PROMPT
     end
   end

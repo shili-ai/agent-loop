@@ -37,10 +37,10 @@ export default function InlineAgentRun({ finalAnswer, pending = false, run }: In
 }
 
 function runLabel(run: AgentRun | undefined, running: boolean, stepCount: number) {
-  if (running) return stepCount ? `Working... ${stepCount} actions done` : "Working...";
-  if (run?.status === "failed") return `Stopped after ${stepCount} actions`;
-  if (run) return `Completed ${stepCount} actions`;
-  return "Completed";
+  if (running) return stepCount ? `Đang xử lý... đã xong ${stepCount} bước` : "Đang xử lý...";
+  if (run?.status === "failed") return `Đã dừng sau ${stepCount} bước`;
+  if (run) return `Hoàn tất ${stepCount} bước`;
+  return "Hoàn tất";
 }
 
 function PendingActivity({ hasSteps }: { hasSteps: boolean }) {
@@ -48,10 +48,10 @@ function PendingActivity({ hasSteps }: { hasSteps: boolean }) {
     <div className="codex-step">
       <Space size={8}>
         <LoadingOutlined />
-        <Typography.Text type="secondary">{hasSteps ? "Continuing agent loop" : "Running agent loop"}</Typography.Text>
+        <Typography.Text type="secondary">{hasSteps ? "Đang xử lý tiếp" : "Đang chạy agent loop"}</Typography.Text>
       </Space>
       <Typography.Paragraph className="codex-step-body">
-        Agent đang xử lý tiếp và sẽ tự cập nhật ngay khi có kết quả mới.
+        Agent đang xử lý và sẽ tự cập nhật ngay khi có kết quả mới.
       </Typography.Paragraph>
     </div>
   );
@@ -87,9 +87,13 @@ function answerFromRun(run?: AgentRun) {
 
 function stepIcon(step: AgentStep) {
   if (step.kind === "context") return <FileSearchOutlined />;
+  if (step.kind === "plan") return <BulbOutlined />;
   if (step.kind === "reasoning") return <BulbOutlined />;
+  if (step.kind === "decision") return <BulbOutlined />;
+  if (step.kind === "evaluation") return <CheckCircleOutlined />;
   if (step.kind === "document_search") return <FileSearchOutlined />;
   if (step.kind === "artifact") return <ToolOutlined />;
+  if (step.kind === "clarification") return <BulbOutlined />;
   if (step.kind === "tool") return <ToolOutlined />;
   if (step.kind === "llm") return <RobotOutlined />;
   if (step.kind === "answer") return <CheckCircleOutlined />;
@@ -98,14 +102,18 @@ function stepIcon(step: AgentStep) {
 }
 
 function stepLabel(step: AgentStep) {
-  if (step.kind === "context") return "Read context";
-  if (step.kind === "reasoning") return "Reasoned about request";
-  if (step.kind === "document_search") return "Searched documents";
-  if (step.kind === "artifact") return "Drafted artifact";
-  if (step.kind === "tool") return "Ran tools";
-  if (step.kind === "llm") return "Called local model";
-  if (step.kind === "answer") return "Prepared final answer";
-  if (step.kind === "error") return "Stopped";
+  if (step.kind === "context") return "Đọc ngữ cảnh";
+  if (step.kind === "plan") return "Lập plan";
+  if (step.kind === "reasoning") return "Phân tích yêu cầu";
+  if (step.kind === "decision") return "Chọn action";
+  if (step.kind === "evaluation") return "Đánh giá tiến độ";
+  if (step.kind === "document_search") return "Tìm tài liệu";
+  if (step.kind === "artifact") return "Soạn bản nháp";
+  if (step.kind === "clarification") return "Hỏi làm rõ";
+  if (step.kind === "tool") return "Chạy công cụ";
+  if (step.kind === "llm") return "Gọi model local";
+  if (step.kind === "answer") return "Tổng hợp câu trả lời";
+  if (step.kind === "error") return "Đã dừng";
   return step.title;
 }
 
@@ -126,7 +134,7 @@ function normalizeOutput(step: AgentStep): ReactNode {
         items={[
           {
             key: "model-output",
-            label: "Model draft",
+            label: "Bản nháp từ model",
             children: (
               <MarkdownContent className="markdown-content step-output-text">{step.data.output}</MarkdownContent>
             ),
@@ -165,7 +173,7 @@ function ToolOutput({ data }: { data: Record<string, unknown> }) {
         <Descriptions
           size="small"
           column={1}
-          items={[{ key: "tools", label: "Tools", children: tools.join(", ") }]}
+          items={[{ key: "tools", label: "Công cụ", children: tools.join(", ") }]}
         />
       ) : null}
 
@@ -186,7 +194,7 @@ function ToolOutput({ data }: { data: Record<string, unknown> }) {
           items={[
             {
               key: "documents",
-              label: `Documents found (${documents.length})`,
+              label: `Tài liệu tìm thấy (${documents.length})`,
               children: (
                 <List
                   size="small"

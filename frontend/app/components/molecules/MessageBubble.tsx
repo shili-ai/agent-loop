@@ -20,7 +20,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
         <div className={isUser ? "message-bubble user-bubble" : "message-bubble agent-bubble"}>
           <Space size={6} className="message-meta">
             {isUser ? <UserOutlined /> : <FileSearchOutlined />}
-            <Typography.Text strong>{isUser ? "You" : "Agent"}</Typography.Text>
+            <Typography.Text strong>{isUser ? "Bạn" : "Trợ lý"}</Typography.Text>
           </Space>
           <MarkdownContent className="markdown-content message-content">{message.content}</MarkdownContent>
         </div>

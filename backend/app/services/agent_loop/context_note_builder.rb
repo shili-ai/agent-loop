@@ -6,12 +6,12 @@ module AgentLoop
 
     def call
       lines = []
-      lines << "### Chat context"
-      lines << "- Industry: #{value(conversation[:industry])}"
-      lines << "- Customer: #{value(conversation[:customer_name])}"
-      lines << "- Recent messages: #{recent_messages.count}"
+      lines << "### Ngữ cảnh chat"
+      lines << "- Ngành: #{value(conversation[:industry])}"
+      lines << "- Khách hàng: #{value(conversation[:customer_name])}"
+      lines << "- Tin nhắn gần đây: #{recent_messages.count}"
       lines << ""
-      lines << "Agent se dung context nay de giu cau tra loi sat voi chat hien tai."
+      lines << "Agent sẽ dùng ngữ cảnh này để giữ câu trả lời sát với chat hiện tại."
       lines.join("\n")
     end
 
@@ -26,7 +26,7 @@ module AgentLoop
     end
 
     def value(item)
-      item.presence || "chua co"
+      item.presence || "chưa có"
     end
   end
 end

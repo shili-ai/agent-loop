@@ -52,7 +52,7 @@ export default function AgentChat() {
       setConversation(selected);
       setMessage("");
     } catch {
-      setError("Khong tai duoc chat. Kiem tra Rails API.");
+      setError("Không tải được chat. Kiểm tra Rails API.");
     } finally {
       setLoading(false);
     }
@@ -69,7 +69,7 @@ export default function AgentChat() {
         setConversation(selected);
       }
     } catch {
-      setError("Khong ket noi duoc Rails API. Kiem tra backend port va NEXT_PUBLIC_API_URL.");
+      setError("Không kết nối được Rails API. Kiểm tra backend port và NEXT_PUBLIC_API_URL.");
     } finally {
       setLoading(false);
     }
@@ -89,7 +89,7 @@ export default function AgentChat() {
         const updated = await getConversation(conversationId);
         setConversation((current) => (current?.id === conversationId ? updated : current));
       } catch {
-        setError("Khong cap nhat duoc tien trinh agent realtime.");
+        setError("Không cập nhật được tiến trình agent realtime.");
       }
     }, 1000);
 
@@ -107,7 +107,7 @@ export default function AgentChat() {
       setMessage("");
       await refreshConversationList();
     } catch {
-      setError("Khong tao duoc chat moi. Kiem tra Rails API.");
+      setError("Không tạo được chat mới. Kiểm tra Rails API.");
     } finally {
       setCreating(false);
     }
@@ -131,7 +131,7 @@ export default function AgentChat() {
         setMessage("");
       }
     } catch {
-      setError("Khong xoa duoc chat. Kiem tra Rails API.");
+      setError("Không xoá được chat. Kiểm tra Rails API.");
     } finally {
       setLoading(false);
     }
@@ -160,7 +160,7 @@ export default function AgentChat() {
       setMessage("");
       await refreshConversationList();
     } catch {
-      setError("Agent loop bi loi khi xu ly message. Thu lai hoac xem log backend.");
+      setError("Agent loop bị lỗi khi xử lý tin nhắn. Thử lại hoặc xem log backend.");
     } finally {
       setSending(false);
     }

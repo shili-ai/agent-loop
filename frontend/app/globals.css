@@ -8,8 +8,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-be-vietnam);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -22,16 +21,17 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-be-vietnam), "Be Vietnam Pro", Arial, sans-serif;
+  letter-spacing: 0;
 }
 
 .agent-shell {
   min-height: 100vh;
-  background: #f4f7f9;
+  background: #f7f8fa;
 }
 
 .agent-sidebar {
-  border-right: 1px solid #d9e2e7;
+  border-right: 1px solid #e5e7eb;
   padding: 24px;
 }
 
@@ -41,7 +41,7 @@ body {
 
 .agent-content {
   min-height: 100vh;
-  padding: 24px;
+  padding: 20px 24px;
 }
 
 .main-chat-stack {
@@ -64,12 +64,15 @@ body {
 
 .messages-card {
   min-height: 0;
+  border-color: #e5e7eb;
+  box-shadow: none;
 }
 
 .messages-card .ant-card-body {
   height: calc(100vh - 180px);
   overflow: auto;
-  padding: 12px;
+  padding: 18px 20px;
+  background: #ffffff;
 }
 
 .empty-state {
@@ -88,7 +91,7 @@ body {
 
 .message-flex {
   width: 100%;
-  max-width: 760px;
+  max-width: 820px;
 }
 
 .message-flex.reverse {
@@ -97,11 +100,10 @@ body {
 }
 
 .message-bubble {
-  max-width: min(680px, 100%);
-  border: 1px solid #d9e2e7;
+  max-width: min(720px, 100%);
+  border: 1px solid #e5e7eb;
   border-radius: 8px;
-  padding: 12px 14px;
-  white-space: pre-wrap;
+  padding: 14px 16px;
 }
 
 .agent-bubble {
@@ -131,8 +133,22 @@ body {
 
 .assistant-activity,
 .codex-run {
-  max-width: 760px;
-  margin: 4px 0 12px 44px;
+  max-width: 820px;
+  margin: 6px 0 16px 44px;
+}
+
+.codex-run > .ant-space {
+  gap: 12px !important;
+}
+
+.codex-run > .ant-space > .ant-space-item:first-child {
+  padding-bottom: 4px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.codex-step {
+  border-left: 2px solid #e5e7eb;
+  padding: 2px 0 2px 14px;
 }
 
 .assistant-activity.compact {
@@ -151,16 +167,20 @@ body {
 
 .codex-step-title {
   color: #6b7280;
+  font-size: 13px;
 }
 
 .codex-step-body {
-  margin: 10px 0 0 0 !important;
-  color: #1f2937;
+  margin: 8px 0 0 0 !important;
+  color: #374151;
+  font-size: 14px;
+  line-height: 1.65;
   white-space: pre-wrap;
 }
 
 .codex-step-output {
-  margin-top: 8px;
+  margin-top: 10px;
+  max-width: 760px;
 }
 
 .codex-output-collapse .ant-collapse-header {
@@ -173,8 +193,10 @@ body {
 }
 
 .codex-final-answer {
-  margin: 2px 0 0 0 !important;
-  white-space: pre-wrap;
+  margin: 6px 0 0 0 !important;
+  border-top: 1px solid #eef2f7;
+  padding-top: 14px;
+  max-width: 760px;
 }
 
 .activity-details-collapse,
@@ -196,7 +218,7 @@ body {
 
 .step-output-text {
   margin-bottom: 0 !important;
-  white-space: pre-wrap;
+  white-space: normal;
 }
 
 .step-output-code {
@@ -215,8 +237,24 @@ body {
 
 .markdown-content {
   color: #1f2937;
-  line-height: 1.58;
+  line-height: 1.72;
   white-space: normal;
+  font-size: 14px;
+}
+
+.message-bubble .markdown-content,
+.codex-final-answer {
+  font-size: 15px;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3 {
+  margin: 0 0 8px;
+  color: #111827;
+  font-size: 15px;
+  line-height: 1.45;
+  font-weight: 600;
 }
 
 .markdown-content p,
@@ -226,7 +264,7 @@ body {
 .markdown-content pre,
 .markdown-content table {
   margin-top: 0;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .markdown-content > :last-child {
@@ -235,7 +273,7 @@ body {
 
 .markdown-content ul,
 .markdown-content ol {
-  padding-left: 22px;
+  padding-left: 20px;
 }
 
 .markdown-content li + li {
@@ -246,7 +284,7 @@ body {
   border-radius: 4px;
   background: #f3f4f6;
   padding: 1px 4px;
-  font-size: 0.92em;
+  font-size: 0.9em;
 }
 
 .markdown-content pre {

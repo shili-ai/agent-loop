@@ -22,10 +22,10 @@ export default function ConversationList({
   return (
     <Card
       size="small"
-      title="Chats"
+      title="Đoạn chat"
       extra={
         <Button type="primary" size="small" icon={<PlusOutlined />} onClick={onCreate}>
-          New
+          Tạo mới
         </Button>
       }
     >
@@ -41,7 +41,7 @@ export default function ConversationList({
                 <Popconfirm
                   key="delete"
                   title="Xoá chat này?"
-                  description="Toàn bộ messages và agent runs của chat sẽ bị xoá."
+                  description="Toàn bộ tin nhắn và lịch sử chạy agent của chat sẽ bị xoá."
                   okText="Xoá"
                   cancelText="Huỷ"
                   okButtonProps={{ danger: true }}
@@ -66,7 +66,7 @@ export default function ConversationList({
                 <Space direction="vertical" size={0}>
                   <Typography.Text strong>{conversation.title}</Typography.Text>
                   <Typography.Text type="secondary">
-                    {conversation.customer_name || "No customer"} · {conversation.industry}
+                    {conversation.customer_name || "Chưa có khách hàng"} · {conversation.industry}
                   </Typography.Text>
                 </Space>
               </Space>
@@ -74,7 +74,7 @@ export default function ConversationList({
           )}
         />
       ) : (
-        <Empty description="Chua co chat nao" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        <Empty description="Chưa có chat nào" image={Empty.PRESENTED_IMAGE_SIMPLE} />
       )}
     </Card>
   );

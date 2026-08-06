@@ -5,7 +5,7 @@ module AgentLoop
     end
 
     def call
-      lines = ["### Documents found"]
+      lines = ["### Tài liệu tìm thấy"]
       @documents.each do |document|
         lines << "- **#{document[:title]}** (`#{document[:type]}`): #{document[:snippet]}"
       end

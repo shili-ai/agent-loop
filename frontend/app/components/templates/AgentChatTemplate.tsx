@@ -21,7 +21,7 @@ export default function AgentChatTemplate({
         token: {
           colorPrimary: "#176b87",
           borderRadius: 8,
-          fontFamily: "var(--font-geist-sans), Arial, sans-serif",
+          fontFamily: "var(--font-be-vietnam), 'Be Vietnam Pro', Arial, sans-serif",
         },
       }}
     >
