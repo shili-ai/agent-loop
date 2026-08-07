@@ -247,13 +247,19 @@ module AgentLoop
 
     def recent_messages_prompt
       recent_messages = Array(@context[:recent_messages]).last(6)
-      return "Không có." if recent_messages.empty?
+      lines = []
+      if @context[:project]
+        project = @context[:project]
+        lines << "- project: #{project[:title]} | #{project[:shared_context].to_s.truncate(500)}"
+      end
+      return "Không có." if recent_messages.empty? && lines.empty?
 
-      recent_messages.map do |message|
+      message_lines = recent_messages.map do |message|
         role = message[:role] || message["role"]
         content = message[:content] || message["content"]
         "- #{role}: #{content.to_s.truncate(500)}"
-      end.join("\n")
+      end
+      (lines + message_lines).join("\n")
     end
   end
 end

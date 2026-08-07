@@ -3,30 +3,41 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createConversation,
+  createProject,
   deleteConversation,
   getConversation,
   listConversations,
+  listProjects,
   sendConversationMessage,
+  updateProject,
 } from "../lib/agentApi";
 import type {
   AgentConversation,
   AgentConversationSummary,
+  AgentProject,
   NewConversationInput,
+  NewProjectInput,
 } from "../types/agent";
 import ErrorNotice from "./atoms/ErrorNotice";
 import NewConversationModal from "./molecules/NewConversationModal";
+import ProjectModal from "./molecules/ProjectModal";
 import AgentChatPanel from "./organisms/AgentChatPanel";
 import AgentSidebar from "./organisms/AgentSidebar";
 import AgentChatTemplate from "./templates/AgentChatTemplate";
 
 export default function AgentChat() {
   const optimisticMessageId = useRef(-1);
+  const [activeProject, setActiveProject] = useState<AgentProject | null>(null);
   const [conversation, setConversation] = useState<AgentConversation | null>(null);
   const [conversations, setConversations] = useState<AgentConversationSummary[]>([]);
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
+  const [projectModalMode, setProjectModalMode] = useState<"create" | "edit">("create");
+  const [projectModalOpen, setProjectModalOpen] = useState(false);
+  const [projectSaving, setProjectSaving] = useState(false);
+  const [projects, setProjects] = useState<AgentProject[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,11 +48,11 @@ export default function AgentChat() {
   );
   const chatDisabled = loading || sending || hasRunningRun || !conversation;
 
-  const refreshConversationList = useCallback(async () => {
-    const items = await listConversations();
+  const refreshConversationList = useCallback(async (projectId = activeProject?.id) => {
+    const items = await listConversations(projectId);
     setConversations(items);
     return items;
-  }, []);
+  }, [activeProject?.id]);
 
   const selectConversation = useCallback(async (id: number) => {
     setLoading(true);
@@ -63,7 +74,12 @@ export default function AgentChat() {
     setError(null);
 
     try {
-      const items = await refreshConversationList();
+      const loadedProjects = await listProjects();
+      setProjects(loadedProjects);
+      const selectedProject = loadedProjects[0] ?? null;
+      setActiveProject(selectedProject);
+
+      const items = await refreshConversationList(selectedProject?.id);
       if (items[0]) {
         const selected = await getConversation(items[0].id);
         setConversation(selected);
@@ -101,11 +117,16 @@ export default function AgentChat() {
     setError(null);
 
     try {
-      const created = await createConversation(input);
+      const created = await createConversation({
+        ...input,
+        agent_project_id: activeProject?.id,
+        industry: input.industry || activeProject?.industry || "Phần mềm",
+        customer_name: input.customer_name || activeProject?.customer_name || undefined,
+      });
       setConversation(created);
       setModalOpen(false);
       setMessage("");
-      await refreshConversationList();
+      await refreshConversationList(activeProject?.id);
     } catch {
       setError("Không tạo được chat mới. Kiểm tra Rails API.");
     } finally {
@@ -119,7 +140,7 @@ export default function AgentChat() {
 
     try {
       await deleteConversation(id);
-      const remainingConversations = await refreshConversationList();
+      const remainingConversations = await refreshConversationList(activeProject?.id);
       const nextConversation = remainingConversations.find((item) => item.id !== id) ?? remainingConversations[0];
 
       if (conversation?.id === id) {
@@ -134,6 +155,60 @@ export default function AgentChat() {
       setError("Không xoá được chat. Kiểm tra Rails API.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleSelectProject(id: number) {
+    const selectedProject = projects.find((project) => project.id === id) ?? null;
+    setActiveProject(selectedProject);
+    setConversation(null);
+    setMessage("");
+    setLoading(true);
+    setError(null);
+
+    try {
+      const items = await refreshConversationList(id);
+      if (items[0]) setConversation(await getConversation(items[0].id));
+    } catch {
+      setError("Không tải được project. Kiểm tra Rails API.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function openCreateProjectModal() {
+    setProjectModalMode("create");
+    setProjectModalOpen(true);
+  }
+
+  function openEditProjectModal() {
+    setProjectModalMode("edit");
+    setProjectModalOpen(true);
+  }
+
+  async function handleProjectModalSubmit(input: NewProjectInput) {
+    setProjectSaving(true);
+    setError(null);
+
+    try {
+      if (projectModalMode === "create") {
+        const created = await createProject(input);
+        const loadedProjects = await listProjects();
+        setProjects(loadedProjects);
+        setActiveProject(created);
+        setConversation(null);
+        setConversations([]);
+        setMessage("");
+      } else if (activeProject) {
+        const updated = await updateProject(activeProject.id, input);
+        setActiveProject(updated);
+        setProjects((current) => current.map((project) => (project.id === updated.id ? updated : project)));
+      }
+      setProjectModalOpen(false);
+    } catch {
+      setError("Không lưu được project. Kiểm tra Rails API.");
+    } finally {
+      setProjectSaving(false);
     }
   }
 
@@ -172,10 +247,15 @@ export default function AgentChat() {
       sidebar={
         <AgentSidebar
           activeConversation={conversation}
+          activeProject={activeProject}
           conversations={conversations}
           loading={loading}
+          projects={projects}
           onCreateConversation={() => setModalOpen(true)}
+          onCreateProject={openCreateProjectModal}
           onDeleteConversation={handleDeleteConversation}
+          onEditProject={openEditProjectModal}
+          onSelectProject={handleSelectProject}
           onSelectConversation={selectConversation}
         />
       }
@@ -193,12 +273,23 @@ export default function AgentChat() {
         />
       }
       newConversationModal={
-        <NewConversationModal
-          creating={creating}
-          open={modalOpen}
-          onCancel={() => setModalOpen(false)}
-          onCreate={handleCreateConversation}
-        />
+        <>
+          <NewConversationModal
+            creating={creating}
+            open={modalOpen}
+            project={activeProject}
+            onCancel={() => setModalOpen(false)}
+            onCreate={handleCreateConversation}
+          />
+          <ProjectModal
+            mode={projectModalMode}
+            open={projectModalOpen}
+            project={activeProject}
+            saving={projectSaving}
+            onCancel={() => setProjectModalOpen(false)}
+            onSubmit={handleProjectModalSubmit}
+          />
+        </>
       }
     />
   );

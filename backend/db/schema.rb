@@ -10,13 +10,15 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_05_105003) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_07_090000) do
   create_table "agent_conversations", force: :cascade do |t|
+    t.integer "agent_project_id"
     t.datetime "created_at", null: false
     t.string "customer_name"
     t.string "industry", default: "software", null: false
     t.string "title", null: false
     t.datetime "updated_at", null: false
+    t.index ["agent_project_id"], name: "index_agent_conversations_on_agent_project_id"
   end
 
   create_table "agent_messages", force: :cascade do |t|
@@ -26,6 +28,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_05_105003) do
     t.string "role", null: false
     t.datetime "updated_at", null: false
     t.index ["agent_conversation_id"], name: "index_agent_messages_on_agent_conversation_id"
+  end
+
+  create_table "agent_projects", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "customer_name"
+    t.text "description"
+    t.string "industry", default: "Phần mềm", null: false
+    t.text "shared_context"
+    t.string "title", null: false
+    t.datetime "updated_at", null: false
   end
 
   create_table "agent_runs", force: :cascade do |t|
@@ -54,6 +66,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_05_105003) do
     t.index ["agent_run_id"], name: "index_agent_steps_on_agent_run_id"
   end
 
+  add_foreign_key "agent_conversations", "agent_projects"
   add_foreign_key "agent_messages", "agent_conversations"
   add_foreign_key "agent_runs", "agent_conversations"
   add_foreign_key "agent_runs", "agent_messages", column: "assistant_message_id"

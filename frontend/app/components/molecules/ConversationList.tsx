@@ -1,12 +1,11 @@
-import { DeleteOutlined, MessageOutlined, PlusOutlined } from "@ant-design/icons";
-import { Button, Card, Empty, List, Popconfirm, Space, Typography } from "antd";
+import { DeleteOutlined, MessageOutlined } from "@ant-design/icons";
+import { Button, Empty, List, Popconfirm, Space, Typography } from "antd";
 import type { AgentConversationSummary } from "../../types/agent";
 
 type ConversationListProps = {
   activeId?: number;
   conversations: AgentConversationSummary[];
   loading: boolean;
-  onCreate: () => void;
   onDelete: (id: number) => void;
   onSelect: (id: number) => void;
 };
@@ -15,23 +14,19 @@ export default function ConversationList({
   activeId,
   conversations,
   loading,
-  onCreate,
   onDelete,
   onSelect,
 }: ConversationListProps) {
   return (
-    <Card
-      size="small"
-      title="Đoạn chat"
-      extra={
-        <Button type="primary" size="small" icon={<PlusOutlined />} onClick={onCreate}>
-          Tạo mới
-        </Button>
-      }
-    >
+    <section className="sidebar-section conversation-section">
+      <div className="sidebar-section-header">
+        <Typography.Text className="sidebar-section-title">Chats trong project</Typography.Text>
+      </div>
       {conversations.length ? (
         <List
+          size="small"
           loading={loading}
+          className="sidebar-conversation-list"
           dataSource={conversations}
           renderItem={(conversation) => (
             <List.Item
@@ -63,7 +58,7 @@ export default function ConversationList({
             >
               <Space align="center" className="conversation-title-row">
                 <MessageOutlined />
-                <Typography.Text strong ellipsis className="conversation-title">
+                <Typography.Text ellipsis className="conversation-title">
                   {conversation.title}
                 </Typography.Text>
               </Space>
@@ -71,8 +66,8 @@ export default function ConversationList({
           )}
         />
       ) : (
-        <Empty description="Chưa có chat nào" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        <Empty description="Chưa có chat nào" image={Empty.PRESENTED_IMAGE_SIMPLE} className="sidebar-empty" />
       )}
-    </Card>
+    </section>
   );
 }

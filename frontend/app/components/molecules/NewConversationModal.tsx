@@ -1,9 +1,11 @@
-import { Form, Input, Modal } from "antd";
-import type { NewConversationInput } from "../../types/agent";
+import { Form, Input, Modal, Typography } from "antd";
+import { useEffect } from "react";
+import type { AgentProject, NewConversationInput } from "../../types/agent";
 
 type NewConversationModalProps = {
   creating: boolean;
   open: boolean;
+  project: AgentProject | null;
   onCancel: () => void;
   onCreate: (input: NewConversationInput) => void;
 };
@@ -11,14 +13,25 @@ type NewConversationModalProps = {
 export default function NewConversationModal({
   creating,
   open,
+  project,
   onCancel,
   onCreate,
 }: NewConversationModalProps) {
   const [form] = Form.useForm<NewConversationInput>();
 
+  useEffect(() => {
+    if (!open) return;
+
+    form.setFieldsValue({
+      title: project?.customer_name ? `Chat với ${project.customer_name}` : "Chat mới",
+      industry: project?.industry ?? "Phần mềm",
+      customer_name: project?.customer_name ?? "",
+    });
+  }, [form, open, project]);
+
   return (
     <Modal
-      title="Tạo chat mới"
+      title="Tạo chat trong project"
       open={open}
       okText="Tạo"
       confirmLoading={creating}
@@ -26,10 +39,14 @@ export default function NewConversationModal({
       onOk={() => form.submit()}
       destroyOnHidden
     >
+      {project ? (
+        <Typography.Paragraph type="secondary">
+          Chat mới sẽ dùng context chung từ <Typography.Text strong>{project.title}</Typography.Text>.
+        </Typography.Paragraph>
+      ) : null}
       <Form
         form={form}
         layout="vertical"
-        initialValues={{ title: "Chat presales mới", industry: "Phần mềm" }}
         onFinish={onCreate}
       >
         <Form.Item

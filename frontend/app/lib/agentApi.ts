@@ -1,7 +1,9 @@
 import type {
   AgentConversation,
   AgentConversationSummary,
+  AgentProject,
   NewConversationInput,
+  NewProjectInput,
 } from "../types/agent";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
@@ -26,8 +28,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function listConversations() {
-  return request<AgentConversationSummary[]>("/api/agent_conversations");
+export function listProjects() {
+  return request<AgentProject[]>("/api/agent_projects");
+}
+
+export function createProject(input: NewProjectInput) {
+  return request<AgentProject>("/api/agent_projects", {
+    method: "POST",
+    body: JSON.stringify({ agent_project: input }),
+  });
+}
+
+export function updateProject(id: number, input: NewProjectInput) {
+  return request<AgentProject>(`/api/agent_projects/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ agent_project: input }),
+  });
+}
+
+export function listConversations(projectId?: number) {
+  const query = projectId ? `?agent_project_id=${projectId}` : "";
+  return request<AgentConversationSummary[]>(`/api/agent_conversations${query}`);
 }
 
 export function getConversation(id: number) {
@@ -42,6 +63,7 @@ export function createConversation(input: NewConversationInput) {
         title: input.title,
         industry: input.industry,
         customer_name: input.customer_name,
+        agent_project_id: input.agent_project_id,
       },
     }),
   });

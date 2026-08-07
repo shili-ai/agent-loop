@@ -14,11 +14,26 @@ module AgentLoop
           industry: @conversation.industry,
           customer_name: @conversation.customer_name
         },
+        project: project_context,
         recent_messages: recent_messages
       }
     end
 
     private
+
+    def project_context
+      project = @conversation.agent_project
+      return nil unless project
+
+      {
+        id: project.id,
+        title: project.title,
+        industry: project.industry,
+        customer_name: project.customer_name,
+        description: project.description,
+        shared_context: project.shared_context
+      }
+    end
 
     def recent_messages
       @conversation.agent_messages.order(created_at: :desc).limit(MAX_MESSAGES).reverse.map do |message|

@@ -7,6 +7,10 @@ module AgentLoop
     def call
       lines = []
       lines << "### Ngữ cảnh chat"
+      if project
+        lines << "- Project: #{value(project[:title])}"
+        lines << "- Context dùng chung: #{project[:shared_context].present? ? 'có' : 'chưa có'}"
+      end
       lines << "- Ngành: #{value(conversation[:industry])}"
       lines << "- Khách hàng: #{value(conversation[:customer_name])}"
       lines << "- Tin nhắn gần đây: #{recent_messages.count}"
@@ -23,6 +27,10 @@ module AgentLoop
 
     def conversation
       @context[:conversation] || {}
+    end
+
+    def project
+      @context[:project]
     end
 
     def value(item)

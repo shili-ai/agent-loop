@@ -6,15 +6,30 @@ class AgentConversationSerializer
   def as_json(*)
     {
       id: @conversation.id,
+      agent_project_id: @conversation.agent_project_id,
       title: @conversation.title,
       industry: @conversation.industry,
       customer_name: @conversation.customer_name,
+      project: project,
       messages: messages,
       runs: runs
     }
   end
 
   private
+
+  def project
+    return nil unless @conversation.agent_project
+
+    {
+      id: @conversation.agent_project.id,
+      title: @conversation.agent_project.title,
+      industry: @conversation.agent_project.industry,
+      customer_name: @conversation.agent_project.customer_name,
+      description: @conversation.agent_project.description,
+      shared_context: @conversation.agent_project.shared_context
+    }
+  end
 
   def messages
     @conversation.agent_messages.order(:created_at).map do |message|

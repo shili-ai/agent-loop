@@ -1,7 +1,9 @@
 module Api
   class AgentConversationsController < ApplicationController
     def index
-      conversations = AgentConversation.order(updated_at: :desc).limit(20)
+      conversations = AgentConversation.order(updated_at: :desc)
+      conversations = conversations.where(agent_project_id: params[:agent_project_id]) if params[:agent_project_id].present?
+      conversations = conversations.limit(20)
 
       render json: conversations.map { |conversation| summary(conversation) }
     end
@@ -28,12 +30,13 @@ module Api
     private
 
     def conversation_params
-      params.require(:agent_conversation).permit(:title, :industry, :customer_name)
+      params.require(:agent_conversation).permit(:title, :industry, :customer_name, :agent_project_id)
     end
 
     def summary(conversation)
       {
         id: conversation.id,
+        agent_project_id: conversation.agent_project_id,
         title: conversation.title,
         industry: conversation.industry,
         customer_name: conversation.customer_name,

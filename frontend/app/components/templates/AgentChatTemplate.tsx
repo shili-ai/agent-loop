@@ -19,9 +19,10 @@ export default function AgentChatTemplate({
       theme={{
         algorithm: theme.defaultAlgorithm,
         token: {
-          colorPrimary: "#176b87",
           borderRadius: 8,
-          fontFamily: "var(--font-be-vietnam), 'Be Vietnam Pro', Arial, sans-serif",
+          fontFamily:
+            '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+          fontSize: 13,
         },
       }}
     >

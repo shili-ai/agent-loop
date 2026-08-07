@@ -1,5 +1,6 @@
 Rails.application.routes.draw do
   namespace :api do
+    resources :agent_projects, only: [:index, :show, :create, :update]
     resources :agent_conversations, only: [:index, :show, :create, :destroy] do
       resources :messages, only: [:create], module: :agent_conversations
     end

@@ -13,6 +13,7 @@ module AgentLoop
         intent: @intent,
         customer: conversation[:customer_name],
         industry: conversation[:industry],
+        project: project,
         evidence: evidence,
         web_evidence: web_evidence,
         draft: draft,
@@ -45,6 +46,10 @@ module AgentLoop
 
     def conversation
       @context[:conversation] || {}
+    end
+
+    def project
+      @context[:project]
     end
 
     def draft
