@@ -1,5 +1,4 @@
-import { SendOutlined } from "@ant-design/icons";
-import { Button, Form, Input } from "antd";
+import { ArrowUpOutlined, PlusOutlined } from "@ant-design/icons";
 
 type ChatComposerProps = {
   disabled: boolean;
@@ -16,30 +15,46 @@ export default function ChatComposer({
   onChange,
   onSend,
 }: ChatComposerProps) {
+  const canSend = Boolean(message.trim()) && !disabled;
+
   return (
-    <Form className="composer" onFinish={onSend}>
-      <Input.TextArea
-        value={message}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder="Ví dụ: Tìm tài liệu về bảo mật SaaS và tạo email follow-up cho khách enterprise"
-        autoSize={{ minRows: 3, maxRows: 8 }}
-        disabled={disabled}
-        onPressEnter={(event) => {
-          if (!event.shiftKey) {
-            event.preventDefault();
-            onSend();
-          }
+    <div className="composer-dock">
+      <form
+        className="composer"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (canSend) onSend();
         }}
-      />
-      <Button
-        type="primary"
-        htmlType="submit"
-        icon={<SendOutlined />}
-        loading={sending}
-        disabled={!message.trim() || disabled}
       >
-        Gửi
-      </Button>
-    </Form>
+        <button type="button" className="composer-attach" title="Đính kèm (sắp có)" disabled>
+          <PlusOutlined />
+        </button>
+        <div className="composer-input-wrap" data-replicated-value={message}>
+          <textarea
+            className="composer-input"
+            value={message}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder="Làm với bất kỳ nội dung nào"
+            rows={1}
+            disabled={disabled}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                if (canSend) onSend();
+              }
+            }}
+          />
+        </div>
+        <button
+          type="submit"
+          className={canSend || sending ? "composer-send active" : "composer-send"}
+          disabled={!canSend}
+          aria-label="Gửi"
+        >
+          <ArrowUpOutlined spin={sending} />
+        </button>
+      </form>
+      <p className="composer-hint">Trợ lý có thể mắc lỗi. Hãy kiểm tra các thông tin quan trọng.</p>
+    </div>
   );
 }

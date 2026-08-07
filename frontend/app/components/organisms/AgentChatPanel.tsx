@@ -1,4 +1,4 @@
-import { Card, Empty, Flex, List, Spin, Typography } from "antd";
+import { Empty, Flex, List, Spin, Typography } from "antd";
 import { pendingClarification } from "../../lib/clarification";
 import type { AgentConversation, AgentMessage, AgentRun } from "../../types/agent";
 import RunStatusTag from "../atoms/RunStatusTag";
@@ -35,7 +35,7 @@ export default function AgentChatPanel({
   return (
     <div className="chat-column">
       <Flex justify="space-between" align="center" className="chat-header">
-        <div>
+        <div className="chat-header-copy">
           <Typography.Title level={4}>Trợ lý presales</Typography.Title>
           <Typography.Text type="secondary">
             Tìm tài liệu, soạn proposal, battlecard, câu trả lời RFP hoặc email follow-up.
@@ -44,26 +44,31 @@ export default function AgentChatPanel({
         <RunStatusTag status={latestRun?.status} />
       </Flex>
 
-      <Card className="messages-card">
+      <div className="messages-scroll">
         {loading ? (
           <Flex justify="center" align="center" className="empty-state">
             <Spin />
           </Flex>
         ) : conversation?.messages.length ? (
-          <List
-            dataSource={buildChatItems(conversation, sending)}
-            renderItem={(item) =>
-              item.type === "message" ? (
-                <MessageBubble message={item.message} />
-              ) : (
-                <InlineAgentRun finalAnswer={item.finalAnswer} pending={item.pending} run={item.run} />
-              )
-            }
-          />
+          <div className="chat-thread">
+            <List
+              split={false}
+              dataSource={buildChatItems(conversation, sending)}
+              renderItem={(item) =>
+                item.type === "message" ? (
+                  <MessageBubble message={item.message} />
+                ) : (
+                  <InlineAgentRun finalAnswer={item.finalAnswer} pending={item.pending} run={item.run} />
+                )
+              }
+            />
+          </div>
         ) : (
-          <Empty description={conversation ? "Gửi tin nhắn đầu tiên để chạy agent loop" : "Chọn hoặc tạo chat mới"} />
+          <Flex justify="center" align="center" className="empty-state">
+            <Empty description={conversation ? "Gửi tin nhắn đầu tiên để chạy agent loop" : "Chọn hoặc tạo chat mới"} />
+          </Flex>
         )}
-      </Card>
+      </div>
 
       {clarificationQuestions.length > 0 ? (
         <div className="clarification-dock">

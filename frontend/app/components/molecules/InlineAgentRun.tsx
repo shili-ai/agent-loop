@@ -6,6 +6,7 @@ import {
   CloseCircleOutlined,
   FileSearchOutlined,
   LoadingOutlined,
+  RightOutlined,
   RobotOutlined,
   ToolOutlined,
 } from "@ant-design/icons";
@@ -14,6 +15,7 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import type { AgentMessage, AgentRun, AgentStep } from "../../types/agent";
 import MarkdownContent from "../atoms/MarkdownContent";
+import MessageActions from "../atoms/MessageActions";
 import MermaidDiagram from "../atoms/MermaidDiagram";
 
 type InlineAgentRunProps = {
@@ -27,19 +29,31 @@ export default function InlineAgentRun({ finalAnswer, pending = false, run }: In
   const flowStep = steps.find((step) => step.kind === "flow");
   const visibleSteps = steps.filter((step) => step.kind !== "flow");
   const running = pending || run?.status === "running";
+  const [expanded, setExpanded] = useState(false);
+  const showSteps = running || expanded;
 
   return (
     <div className="codex-run">
       <Space direction="vertical" size={10} className="full-width">
-        <div className="run-summary">
-          <Space size={8}>
-            {running ? <LoadingOutlined /> : <CheckCircleOutlined />}
-            <Typography.Text strong>{runLabel(run, running, visibleSteps.length)}</Typography.Text>
-          </Space>
-        </div>
+        <button
+          type="button"
+          className={running ? "run-summary running" : "run-summary"}
+          onClick={() => !running && setExpanded((value) => !value)}
+          disabled={running}
+        >
+          {running ? <LoadingOutlined /> : <CheckCircleOutlined className="run-summary-check" />}
+          <span className="run-summary-label">{runLabel(run, running, visibleSteps.length)}</span>
+          {!running && visibleSteps.length ? (
+            <RightOutlined className={expanded ? "run-summary-caret open" : "run-summary-caret"} />
+          ) : null}
+        </button>
 
-        {visibleSteps.map((step, index) => <StepActivity key={step.id} index={index} step={step} />)}
-        {running ? <PendingActivity hasSteps={visibleSteps.length > 0} /> : null}
+        {showSteps ? (
+          <div className="run-steps">
+            {visibleSteps.map((step, index) => <StepActivity key={step.id} index={index} step={step} />)}
+            {running ? <PendingActivity hasSteps={visibleSteps.length > 0} /> : null}
+          </div>
+        ) : null}
 
         {!running ? <FinalAnswer message={finalAnswer} run={run} /> : null}
         {!running && flowStep ? <FlowDiagramStep step={flowStep} /> : null}
@@ -51,8 +65,8 @@ export default function InlineAgentRun({ finalAnswer, pending = false, run }: In
 function runLabel(run: AgentRun | undefined, running: boolean, stepCount: number) {
   if (running) return stepCount ? `Đang xử lý... đã xong ${stepCount} bước` : "Đang xử lý...";
   if (run?.status === "failed") return `Đã dừng sau ${stepCount} bước`;
-  if (run) return `Hoàn tất ${stepCount} bước`;
-  return "Hoàn tất";
+  if (run) return stepCount ? `Đã xử lý qua ${stepCount} bước` : "Đã xử lý";
+  return "Đã xử lý";
 }
 
 function PendingActivity({ hasSteps }: { hasSteps: boolean }) {
@@ -113,6 +127,7 @@ function FinalAnswer({ message, run }: { message?: AgentMessage; run?: AgentRun 
   return (
     <section className="final-answer-section">
       <MarkdownContent className="markdown-content codex-final-answer">{answer}</MarkdownContent>
+      <MessageActions content={answer} />
     </section>
   );
 }

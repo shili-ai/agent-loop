@@ -32,6 +32,10 @@ export function listProjects() {
   return request<AgentProject[]>("/api/agent_projects");
 }
 
+export function getProject(id: number) {
+  return request<AgentProject>(`/api/agent_projects/${id}`);
+}
+
 export function createProject(input: NewProjectInput) {
   return request<AgentProject>("/api/agent_projects", {
     method: "POST",

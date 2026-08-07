@@ -1,19 +1,18 @@
-import { AppstoreOutlined } from "@ant-design/icons";
-import { Avatar, Flex, Layout, Typography } from "antd";
+import { FolderAddOutlined, FolderOpenOutlined, FormOutlined } from "@ant-design/icons";
+import { Avatar, Button, Flex, Layout, Space, Typography } from "antd";
+import Link from "next/link";
 import type { AgentConversation, AgentConversationSummary, AgentProject } from "../../types/agent";
-import ConversationList from "../molecules/ConversationList";
 import ProjectPanel from "../molecules/ProjectPanel";
 
 type AgentSidebarProps = {
   activeConversation: AgentConversation | null;
   activeProject: AgentProject | null;
+  activeProjectConversations: AgentConversationSummary[];
   conversations: AgentConversationSummary[];
   loading: boolean;
   projects: AgentProject[];
   onCreateConversation: () => void;
   onCreateProject: () => void;
-  onDeleteConversation: (id: number) => void;
-  onEditProject: () => void;
   onSelectProject: (id: number) => void;
   onSelectConversation: (id: number) => void;
 };
@@ -21,13 +20,12 @@ type AgentSidebarProps = {
 export default function AgentSidebar({
   activeConversation,
   activeProject,
+  activeProjectConversations,
   conversations,
   loading,
   projects,
   onCreateConversation,
   onCreateProject,
-  onDeleteConversation,
-  onEditProject,
   onSelectProject,
   onSelectConversation,
 }: AgentSidebarProps) {
@@ -46,41 +44,33 @@ export default function AgentSidebar({
               Agent workspace
             </Typography.Text>
           </div>
-          <AppstoreOutlined className="sidebar-brand-menu" />
+        </div>
+
+        <div className="sidebar-actions">
+          <Button block type="text" icon={<FormOutlined />} onClick={onCreateConversation}>
+            Đoạn chat mới
+          </Button>
+          <Space.Compact block>
+            <Link href="/projects" className="sidebar-action-link">
+              <Button block type="text" icon={<FolderOpenOutlined />}>
+                Projects
+              </Button>
+            </Link>
+            <Button type="text" icon={<FolderAddOutlined />} title="Tạo project" onClick={onCreateProject} />
+          </Space.Compact>
         </div>
 
         <div className="sidebar-scroll">
           <ProjectPanel
+            activeConversationId={activeConversation?.id}
             activeProject={activeProject}
-            loading={loading}
-            projects={projects}
-            onCreate={onCreateProject}
-            onCreateChat={onCreateConversation}
-            onEdit={onEditProject}
-            onSelect={onSelectProject}
-          />
-
-          <ConversationList
-            activeId={activeConversation?.id}
+            activeProjectConversations={activeProjectConversations}
             conversations={conversations}
             loading={loading}
-            onDelete={onDeleteConversation}
-            onSelect={onSelectConversation}
+            projects={projects}
+            onSelect={onSelectProject}
+            onSelectConversation={onSelectConversation}
           />
-        </div>
-
-        <div className="sidebar-footer">
-          <Avatar size={30} className="sidebar-user-avatar">
-            AI
-          </Avatar>
-          <div className="sidebar-footer-copy">
-            <Typography.Text strong ellipsis className="sidebar-footer-title">
-              Local workspace
-            </Typography.Text>
-            <Typography.Text type="secondary" ellipsis className="sidebar-footer-subtitle">
-              Project context enabled
-            </Typography.Text>
-          </div>
         </div>
       </Flex>
     </Layout.Sider>

@@ -46,7 +46,7 @@ export type AgentConversation = {
 
 export type AgentConversationSummary = Pick<
   AgentConversation,
-  "id" | "title" | "industry" | "customer_name"
+  "agent_project_id" | "id" | "title" | "industry" | "customer_name"
 > & {
   updated_at: string;
 };
