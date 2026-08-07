@@ -28,6 +28,7 @@ module AgentLoop
 
     def actions
       base = ["search_documents"]
+      base << "web_search" if needs_web_search?
       base << "draft_artifact" unless @intent == "document_search"
       base << "ask_clarification" if needs_clarification?
       base << "final_answer"
@@ -36,6 +37,10 @@ module AgentLoop
 
     def needs_clarification?
       @message.split.length < 8
+    end
+
+    def needs_web_search?
+      @message.downcase.match?(/web|internet|online|google|tin mới|mới nhất|hiện nay|thị trường|đối thủ|website/)
     end
 
     def markdown_output

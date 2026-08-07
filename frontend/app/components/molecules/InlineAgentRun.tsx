@@ -196,7 +196,7 @@ function stepInput(step: AgentStep) {
     };
   }
 
-  if (step.kind === "document_search") {
+  if (step.kind === "document_search" || step.kind === "web_search") {
     return {
       ...base,
       tools: data.tools,
@@ -237,6 +237,7 @@ function stepIcon(step: AgentStep) {
   if (step.kind === "decision") return <BulbOutlined />;
   if (step.kind === "evaluation") return <CheckCircleOutlined />;
   if (step.kind === "document_search") return <FileSearchOutlined />;
+  if (step.kind === "web_search") return <FileSearchOutlined />;
   if (step.kind === "artifact") return <ToolOutlined />;
   if (step.kind === "clarification") return <BulbOutlined />;
   if (step.kind === "tool") return <ToolOutlined />;
@@ -254,6 +255,7 @@ function stepLabel(step: AgentStep) {
   if (step.kind === "decision") return "Chọn action";
   if (step.kind === "evaluation") return "Đánh giá tiến độ";
   if (step.kind === "document_search") return "Tìm tài liệu";
+  if (step.kind === "web_search") return "Tìm trên web";
   if (step.kind === "artifact") return "Soạn bản nháp";
   if (step.kind === "clarification") return "Hỏi làm rõ";
   if (step.kind === "tool") return "Chạy công cụ";
@@ -265,7 +267,7 @@ function stepLabel(step: AgentStep) {
 }
 
 function stepKindLabel(step: AgentStep) {
-  if (["document_search", "artifact", "tool"].includes(step.kind)) return "Tool";
+  if (["document_search", "web_search", "artifact", "tool"].includes(step.kind)) return "Tool";
   if (step.kind === "llm") return "AI model";
   if (step.kind === "decision") return "Decision";
   if (step.kind === "evaluation") return "Evaluation";
@@ -280,7 +282,7 @@ function usesModel(step: AgentStep) {
 }
 
 function stepTone(step: AgentStep) {
-  if (["document_search", "artifact", "tool"].includes(step.kind)) return "tool";
+  if (["document_search", "web_search", "artifact", "tool"].includes(step.kind)) return "tool";
   if (step.kind === "llm") return "model";
   if (["decision", "evaluation", "plan", "reasoning"].includes(step.kind)) return "thinking";
   if (step.kind === "answer") return "final";
@@ -409,6 +411,7 @@ function ToolOutput({ data }: { data: Record<string, unknown> }) {
   const tools = data.tools as string[] | undefined;
   const artifact = data.artifact as { title?: string; bullets?: string[] } | undefined;
   const documents = data.documents as Array<{ title?: string; type?: string; snippet?: string }> | undefined;
+  const webResults = data.web_results as Array<{ title?: string; url?: string; snippet?: string; source?: string }> | undefined;
   const markdownOutput = typeof data.output === "string" && data.output.trim() ? data.output : null;
 
   return (
@@ -449,6 +452,37 @@ function ToolOutput({ data }: { data: Record<string, unknown> }) {
                         <Typography.Text strong>{document.title}</Typography.Text>
                         <Typography.Text type="secondary">
                           {document.type}: {document.snippet}
+                        </Typography.Text>
+                      </Space>
+                    </List.Item>
+                  )}
+                />
+              ),
+            },
+          ]}
+        />
+      ) : null}
+
+      {webResults?.length ? (
+        <Collapse
+          ghost
+          size="small"
+          className="codex-output-collapse"
+          items={[
+            {
+              key: "web-results",
+              label: `Kết quả web (${webResults.length})`,
+              children: (
+                <List
+                  size="small"
+                  dataSource={webResults}
+                  renderItem={(result) => (
+                    <List.Item>
+                      <Space direction="vertical" size={0}>
+                        <Typography.Text strong>{result.title}</Typography.Text>
+                        <Typography.Text type="secondary">
+                          {result.url ? `${result.url}: ` : ""}
+                          {result.snippet}
                         </Typography.Text>
                       </Space>
                     </List.Item>

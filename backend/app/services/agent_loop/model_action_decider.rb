@@ -7,6 +7,7 @@ module AgentLoop
   class ModelActionDecider
     ACTIONS = {
       "search_documents" => "Tìm tài liệu / dẫn chứng nội bộ liên quan tới yêu cầu.",
+      "web_search" => "Tìm thông tin mới hoặc thông tin ngoài kho nội bộ trên web.",
       "draft_artifact" => "Soạn bản nháp (proposal, battlecard, email, RFP...) dựa trên tài liệu đã có.",
       "ask_clarification" => "Hỏi lại người dùng khi yêu cầu quá ngắn hoặc thiếu ngữ cảnh.",
       "final_answer" => "Dừng vòng lặp và tổng hợp câu trả lời cuối cho người dùng."
@@ -15,20 +16,29 @@ module AgentLoop
     # Sau ngần này lần tìm tài liệu mà vẫn rỗng thì không cho tìm lại nữa.
     MAX_SEARCH_ATTEMPTS = 2
 
-    def initialize(intent:, message:, state:, iteration:, max_iterations:, plan:, client: LocalModelClient.new)
+    def initialize(intent:, message:, state:, iteration:, max_iterations:, plan:, context: {}, client: LocalModelClient.new)
       @intent = intent
       @message = message
       @state = state
       @iteration = iteration
       @max_iterations = max_iterations
       @plan = plan
+      @context = context
       @client = client
     end
 
     def call
       return forced_final if @iteration >= @max_iterations
 
-      guard_repeated_search(decide)
+      guard_answered_clarification(
+        guard_completed_artifact(
+          guard_repeated_web_search(
+            guard_repeated_search(
+              guard_prefer_web_search(decide)
+            )
+          )
+        )
+      )
     end
 
     private
@@ -61,8 +71,62 @@ module AgentLoop
       )
     end
 
+    def guard_prefer_web_search(decision)
+      return decision unless decision[:action] == "search_documents"
+      return decision unless @intent == "web_search"
+      return decision if web_attempts.positive?
+
+      build(
+        "web_search",
+        "Yêu cầu cần thông tin ngoài web; dùng web_search thay vì search_documents nội bộ.",
+        source: "guard"
+      )
+    end
+
+    def guard_completed_artifact(decision)
+      return decision unless decision[:action] == "draft_artifact"
+      return decision unless artifact?
+
+      build(
+        "final_answer",
+        "Bản nháp đã được tạo ở vòng trước; dừng lặp draft_artifact và chuyển sang tổng hợp câu trả lời cuối.",
+        source: "guard"
+      )
+    end
+
+    def guard_repeated_web_search(decision)
+      return decision unless decision[:action] == "web_search"
+      return decision if web_results.empty? && web_attempts.zero?
+
+      alternative = artifact? || @intent == "document_search" ? "final_answer" : "draft_artifact"
+      build(
+        alternative,
+        "Web search đã chạy trong vòng trước; không lặp lại và chuyển sang #{alternative}.",
+        source: "guard"
+      )
+    end
+
     def forced_final
       build("final_answer", "Đã chạm giới hạn #{@max_iterations} vòng, dừng để tổng hợp.", source: "guard")
+    end
+
+    def guard_answered_clarification(decision)
+      return decision unless decision[:action] == "ask_clarification"
+      return decision unless answered_clarification?
+
+      alternative =
+        if documents.empty?
+          "search_documents"
+        elsif @intent == "document_search" || artifact?
+          "final_answer"
+        else
+          "draft_artifact"
+        end
+      build(
+        alternative,
+        "Người dùng đã trả lời câu hỏi làm rõ; tiếp tục với #{alternative} thay vì hỏi lại.",
+        source: "guard"
+      )
     end
 
     def fallback(error)
@@ -71,7 +135,8 @@ module AgentLoop
         message: @message,
         state: @state,
         iteration: @iteration,
-        max_iterations: @max_iterations
+        max_iterations: @max_iterations,
+        context: @context
       ).call
       build(
         rule[:action],
@@ -139,8 +204,11 @@ module AgentLoop
         max_iterations: @max_iterations,
         documents_count: documents.count,
         search_attempts: search_attempts,
+        web_results_count: web_results.count,
+        web_attempts: web_attempts,
         has_artifact: artifact? ? "có" : "chưa",
-        clarified: clarified? ? "rồi" : "chưa"
+        clarified: clarified? || answered_clarification? ? "rồi" : "chưa",
+        recent_messages: recent_messages_prompt
       )
     end
 
@@ -161,8 +229,31 @@ module AgentLoop
       @state[:artifact].present?
     end
 
+    def web_results
+      @state[:web_results] || []
+    end
+
+    def web_attempts
+      @state[:web_attempts].to_i
+    end
+
     def clarified?
       @state[:clarification].present?
+    end
+
+    def answered_clarification?
+      @message.downcase.include?("bổ sung ngữ cảnh:")
+    end
+
+    def recent_messages_prompt
+      recent_messages = Array(@context[:recent_messages]).last(6)
+      return "Không có." if recent_messages.empty?
+
+      recent_messages.map do |message|
+        role = message[:role] || message["role"]
+        content = message[:content] || message["content"]
+        "- #{role}: #{content.to_s.truncate(500)}"
+      end.join("\n")
     end
   end
 end

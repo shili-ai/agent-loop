@@ -8,7 +8,7 @@ module AgentLoop
     DEFAULT_BASE_URL = "http://localhost:11434"
     DEFAULT_MODEL = "llama3.1:8b"
     DEFAULT_OPEN_TIMEOUT = 5
-    DEFAULT_READ_TIMEOUT = 30
+    DEFAULT_READ_TIMEOUT = 90
 
     def initialize(
       base_url: ENV.fetch("OLLAMA_BASE_URL", DEFAULT_BASE_URL),

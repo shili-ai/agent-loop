@@ -6,6 +6,7 @@ module AgentLoop
       "plan" => "Lập plan",
       "decision" => "Chọn action",
       "document_search" => "Tìm tài liệu",
+      "web_search" => "Tìm trên web",
       "artifact" => "Soạn bản nháp",
       "clarification" => "Hỏi làm rõ",
       "evaluation" => "Đánh giá",

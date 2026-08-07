@@ -29,6 +29,7 @@ module AgentLoop
       run = @run || create_run
 
       context = ContextBuilder.new(conversation: @conversation).call
+      request_content = effective_content(context)
       create_step(
         run,
         "context",
@@ -37,27 +38,35 @@ module AgentLoop
         context.merge(output: ContextNoteBuilder.new(context: context).call)
       )
 
-      intent = IntentClassifier.new(message: @content).call
+      intent = IntentClassifier.new(message: request_content).call
       run.update!(intent: intent)
       create_step(
         run,
         "reasoning",
         "Phân loại ý định",
         "Đã xác định ý định: #{intent}.",
-        { intent: intent, output: IntentNoteBuilder.new(intent: intent, message: @content).call }
+        { intent: intent, output: IntentNoteBuilder.new(intent: intent, message: request_content).call }
       )
 
-      plan = LoopPlanBuilder.new(intent: intent, message: @content).call
+      plan = LoopPlanBuilder.new(intent: intent, message: request_content).call
       create_step(run, "plan", "Lập plan", "Đã tạo plan ngắn cho agent loop.", plan)
 
-      state = { documents: [], artifact: nil, artifact_tool: nil, clarification: nil, search_attempts: 0 }
-      loop_result = run_dynamic_loop(run, intent, state, plan)
+      state = {
+        documents: [],
+        web_results: [],
+        artifact: nil,
+        artifact_tool: nil,
+        clarification: nil,
+        search_attempts: 0,
+        web_attempts: 0
+      }
+      loop_result = run_dynamic_loop(run, intent, state, plan, request_content, context)
       tool_result = build_tool_result(state)
-      model_answer = loop_result[:action] == "final_answer" ? generate_model_answer(run, intent, tool_result, context) : nil
+      model_answer = loop_result[:action] == "final_answer" ? generate_model_answer(run, intent, tool_result, context, request_content) : nil
       answer = ResponseComposer.new(
         intent: intent,
         tool_result: tool_result,
-        user_message: @content,
+        user_message: request_content,
         model_answer: model_answer,
         clarification: state[:clarification]
       ).call
@@ -94,16 +103,17 @@ module AgentLoop
 
     private
 
-    def run_dynamic_loop(run, intent, state, plan)
+    def run_dynamic_loop(run, intent, state, plan, message, context)
       MAX_ITERATIONS.times do |index|
         iteration = index + 1
         decision = ModelActionDecider.new(
           intent: intent,
-          message: @content,
+          message: message,
           state: state,
           iteration: iteration,
           max_iterations: MAX_ITERATIONS,
-          plan: plan
+          plan: plan,
+          context: context
         ).call
         create_step(
           run,
@@ -115,17 +125,26 @@ module AgentLoop
 
         return decision if decision[:action] == "final_answer"
 
-        execute_action(run, intent, state, decision[:action])
+        execute_action(run, intent, state, decision[:action], message)
+        return completed_artifact_decision if decision[:action] == "draft_artifact"
         return decision if decision[:action] == "ask_clarification"
       end
 
       { action: "final_answer", reason: "Đã chạm giới hạn vòng lặp an toàn." }
     end
 
-    def execute_action(run, intent, state, action)
+    def completed_artifact_decision
+      {
+        action: "final_answer",
+        reason: "Bản nháp đã được tạo; chuyển sang tổng hợp câu trả lời cuối.",
+        source: "guard"
+      }
+    end
+
+    def execute_action(run, intent, state, action, message)
       case action
       when "search_documents"
-        documents = DummyDocumentSearch.new(query: @content).call
+        documents = DummyDocumentSearch.new(query: message).call
         state[:documents] = documents
         state[:search_attempts] = state[:search_attempts].to_i + 1
         create_step(
@@ -134,6 +153,17 @@ module AgentLoop
           "Tìm tài liệu",
           "Đã tìm thấy #{documents.count} tài liệu demo liên quan.",
           { tools: ["document_search"], documents: documents, output: DocumentSearchNoteBuilder.new(documents: documents).call }
+        )
+      when "web_search"
+        results = WebSearch.new(query: message).call
+        state[:web_results] = results
+        state[:web_attempts] = state[:web_attempts].to_i + 1
+        create_step(
+          run,
+          "web_search",
+          "Tìm trên web",
+          "Đã tìm thấy #{results.count} kết quả web.",
+          { tools: ["web_search"], web_results: results, output: WebSearchNoteBuilder.new(results: results).call }
         )
       when "draft_artifact"
         artifact_result = ArtifactBuilder.new(intent: intent, documents: state[:documents]).call
@@ -151,7 +181,7 @@ module AgentLoop
           }
         )
       when "ask_clarification"
-        clarification = ClarificationBuilder.new(message: @content).call
+        clarification = ClarificationBuilder.new(message: message).call
         state[:clarification] = clarification
         create_step(
           run,
@@ -166,11 +196,13 @@ module AgentLoop
     def build_tool_result(state)
       tools = []
       tools << "document_search" if state[:documents].present?
+      tools << "web_search" if state[:web_results].present?
       tools << state[:artifact_tool] if state[:artifact_tool].present?
 
       {
         tools: tools,
         documents: state[:documents] || [],
+        web_results: state[:web_results] || [],
         artifact: state[:artifact]
       }
     end
@@ -180,10 +212,10 @@ module AgentLoop
       @conversation.agent_runs.create!(user_message: user_message, status: "running")
     end
 
-    def generate_model_answer(run, intent, tool_result, context)
+    def generate_model_answer(run, intent, tool_result, context, request_content)
       generator = ModelAnswerGenerator.new(
         brief: FinalBriefBuilder.new(
-          user_message: @content,
+          user_message: request_content,
           intent: intent,
           context: context,
           tool_result: tool_result
@@ -215,6 +247,37 @@ module AgentLoop
         summary: "Model local bị lỗi, dùng bộ tổng hợp mặc định.",
         data: { error: e.message, output: nil, status: "failed" }
       )
+      nil
+    end
+
+    def effective_content(context)
+      return @content unless clarification_reply?
+
+      original = previous_user_request(context)
+      return @content if original.blank?
+
+      <<~TEXT.squish
+        Yêu cầu gốc: #{original}
+
+        Người dùng đã bổ sung ngữ cảnh/trả lời câu hỏi làm rõ: #{@content}
+      TEXT
+    end
+
+    def clarification_reply?
+      @content.to_s.strip.downcase.start_with?("bổ sung ngữ cảnh:")
+    end
+
+    def previous_user_request(context)
+      recent_messages = context[:recent_messages] || []
+      recent_messages.reverse_each do |message|
+        next unless message[:role] == "user"
+
+        content = message[:content].to_s
+        next if content == @content
+        next if content.strip.downcase.start_with?("bổ sung ngữ cảnh:")
+
+        return content
+      end
       nil
     end
 

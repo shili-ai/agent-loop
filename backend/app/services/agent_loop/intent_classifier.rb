@@ -5,6 +5,7 @@ module AgentLoop
       "battlecard" => ["battlecard", "doi thu", "đối thủ", "compare", "so sanh", "so sánh"],
       "follow_up" => ["follow up", "follow-up", "email", "mail", "gui khach", "gửi khách"],
       "rfp_answer" => ["rfp", "rfi", "questionnaire", "tra loi", "trả lời"],
+      "web_search" => ["web", "internet", "online", "google", "tin mới", "mới nhất", "hiện nay", "thị trường", "website"],
       "document_search" => ["tim", "tìm", "tai lieu", "tài liệu", "case study", "reference"]
     }.freeze
 
