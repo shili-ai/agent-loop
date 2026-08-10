@@ -17,6 +17,7 @@ module AgentLoop
         working_notes: working_notes,
         evidence: evidence,
         web_evidence: web_evidence,
+        web_pages: web_pages,
         draft: draft,
         missing_context: missing_context
       }
@@ -40,6 +41,7 @@ module AgentLoop
           action: note[:action] || note["action"],
           summary: note[:summary] || note["summary"],
           evidence_count: note[:evidence_count] || note["evidence_count"],
+          raw_count: note[:raw_count] || note["raw_count"],
           titles: note[:titles] || note["titles"],
           candidate_titles: note[:candidate_titles] || note["candidate_titles"]
         }.compact
@@ -53,6 +55,19 @@ module AgentLoop
           url: result[:url],
           snippet: result[:snippet],
           source: result[:source]
+        }
+      end
+    end
+
+    def web_pages
+      Array(@tool_result[:web_pages]).map do |page|
+        {
+          title: page[:title],
+          url: page[:url],
+          description: page[:description],
+          headings: page[:headings],
+          content: page[:content],
+          content_length: page[:content_length]
         }
       end
     end

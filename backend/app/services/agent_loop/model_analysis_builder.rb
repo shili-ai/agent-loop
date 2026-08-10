@@ -22,6 +22,10 @@ module AgentLoop
 
     attr_reader :client
 
+    def prompt_messages
+      messages
+    end
+
     def call_with_metrics
       result = @client.chat_with_metrics(messages: messages, temperature: 0, format: "json")
       parsed = parse(result[:content])

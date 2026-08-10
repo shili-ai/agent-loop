@@ -36,7 +36,7 @@ export default function MarkdownContent({ children, className }: MarkdownContent
   return (
     <div className={className}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {children}
+        {children.trim()}
       </ReactMarkdown>
     </div>
   );

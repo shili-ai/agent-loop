@@ -98,7 +98,6 @@ function StepActivity({ step }: { step: AgentStep }) {
           </button>
         </div>
         {text ? <div className="reason-text">{text}</div> : null}
-        <StepResultPreview step={step} />
         {showDetail ? <StepIoPanel step={step} /> : null}
       </div>
     </div>
@@ -121,6 +120,17 @@ function StepResultPreview({ step }: { step: AgentStep }) {
     );
   }
 
+  if (step.kind === "web_read") {
+    const pages = asRecords(step.data.pages);
+    if (!pages.length) return null;
+
+    return (
+      <div className="step-result-preview">
+        <WebPageReadGroup pages={pages} />
+      </div>
+    );
+  }
+
   if (step.kind === "document_search") {
     const documents = asRecords(step.data.documents);
     if (!documents.length) return null;
@@ -133,6 +143,26 @@ function StepResultPreview({ step }: { step: AgentStep }) {
   }
 
   return null;
+}
+
+function WebPageReadGroup({ pages }: { pages: Record<string, unknown>[] }) {
+  return (
+    <div className="step-result-group">
+      <div className="step-result-title">Trang đã đọc</div>
+      <div className="step-read-pages">
+        {pages.slice(0, 3).map((page, index) => (
+          <article className="step-read-page" key={`${asText(page.title) || asText(page.url) || index}-${index}`}>
+            <div className="step-read-page-head">
+              <span className="step-result-name">{asText(page.title) || asText(page.url) || "Không có tiêu đề"}</span>
+              {asText(page.url) ? <span className="step-result-url"> · {asText(page.url)}</span> : null}
+            </div>
+            {asText(page.error) ? <div className="step-result-empty">Không đọc được: {asText(page.error)}</div> : null}
+            {asText(page.content) ? <pre className="step-read-content">{truncateText(asText(page.content), 900)}</pre> : null}
+          </article>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function StepResultGroup({ items, title }: { items: Record<string, unknown>[]; title: string }) {
@@ -242,6 +272,7 @@ function StepIoPanel({ step }: { step: AgentStep }) {
           ))}
         </div>
       ) : null}
+      <StepResultPreview step={step} />
       <div className="step-io-sections">
         <StepDataSection title="Input" data={input} />
         {output ? <StepDataSection title="Output" data={output} /> : null}
@@ -293,7 +324,7 @@ function stepMetadata(step: AgentStep) {
     addItem("Lý do", data.reason, true);
   }
 
-  if (step.kind === "document_search" || step.kind === "web_search") {
+  if (step.kind === "document_search" || step.kind === "web_search" || step.kind === "web_read") {
     addItem("Công cụ", Array.isArray(data.tools) ? data.tools.join(", ") : data.tools);
     addItem("Từ khoá", Array.isArray(data.keywords) ? data.keywords.join(", ") : data.query);
   }
@@ -309,6 +340,10 @@ function stepMetadata(step: AgentStep) {
 function stepInput(step: AgentStep): { content: string } {
   const data = step.data;
   const base = { kind: step.kind, title: step.title, summary: step.summary };
+
+  if (Array.isArray(data.prompt_messages)) {
+    return { content: promptMessagesToText(data.prompt_messages) };
+  }
 
   if (step.kind === "llm") {
     return {
@@ -342,7 +377,7 @@ function stepInput(step: AgentStep): { content: string } {
     };
   }
 
-  if (step.kind === "document_search" || step.kind === "web_search") {
+  if (step.kind === "document_search" || step.kind === "web_search" || step.kind === "web_read") {
     return {
       content: JSON.stringify(
         {
@@ -350,6 +385,7 @@ function stepInput(step: AgentStep): { content: string } {
           tools: data.tools,
           query: data.query,
           keywords: data.keywords,
+          pages: data.pages,
         },
         null,
         2
@@ -401,6 +437,20 @@ function asText(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+function promptMessagesToText(messages: unknown[]) {
+  return messages
+    .map((message, index) => {
+      if (!message || typeof message !== "object") return `#${index + 1}\n${String(message)}`;
+      const item = message as { role?: unknown; content?: unknown };
+      return [`#${index + 1} role: ${String(item.role ?? "unknown")}`, "", String(item.content ?? "")].join("\n");
+    })
+    .join("\n\n---\n\n");
+}
+
+function truncateText(value: string, length: number) {
+  return value.length > length ? `${value.slice(0, length - 1)}…` : value;
+}
+
 function artifactTitle(artifact: unknown) {
   if (artifact && typeof artifact === "object" && "title" in artifact) {
     return String((artifact as { title?: unknown }).title ?? "");
@@ -416,6 +466,7 @@ function stepIcon(step: AgentStep) {
   if (step.kind === "evaluation") return <CheckCircleOutlined />;
   if (step.kind === "document_search") return <FileSearchOutlined />;
   if (step.kind === "web_search") return <FileSearchOutlined />;
+  if (step.kind === "web_read") return <FileTextOutlined />;
   if (step.kind === "artifact") return <ToolOutlined />;
   if (step.kind === "clarification") return <BulbOutlined />;
   if (step.kind === "tool") return <ToolOutlined />;
@@ -433,6 +484,7 @@ function stepLabel(step: AgentStep) {
   if (step.kind === "evaluation") return "Tự đánh giá tiến độ";
   if (step.kind === "document_search") return "Tìm tài liệu liên quan";
   if (step.kind === "web_search") return "Tra cứu trên web";
+  if (step.kind === "web_read") return "Đọc trang web";
   if (step.kind === "artifact") return "Soạn bản nháp";
   if (step.kind === "clarification") return "Đặt câu hỏi làm rõ";
   if (step.kind === "tool") return "Dùng công cụ";
@@ -443,7 +495,7 @@ function stepLabel(step: AgentStep) {
 }
 
 function stepTone(step: AgentStep) {
-  if (["document_search", "web_search", "artifact", "tool"].includes(step.kind)) return "tool";
+  if (["document_search", "web_search", "web_read", "artifact", "tool"].includes(step.kind)) return "tool";
   if (step.kind === "llm") return "model";
   if (["decision", "evaluation", "plan", "reasoning"].includes(step.kind)) return "thinking";
   if (step.kind === "answer") return "final";

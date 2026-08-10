@@ -12,8 +12,13 @@ module AgentLoop
       @client = client
     end
 
+    def prompt_messages
+      messages
+    end
+
     def call
-      result = @client.chat_with_metrics(messages: messages, temperature: 0.2, format: "json")
+      prompt = prompt_messages
+      result = @client.chat_with_metrics(messages: prompt, temperature: 0.2, format: "json")
       questions = sanitize_questions(parse(result[:content]))
       raise "Model không tạo đủ câu hỏi làm rõ" if questions.length < MIN_QUESTIONS
 
@@ -23,6 +28,7 @@ module AgentLoop
         source: "model",
         provider: "ollama",
         model: @client.model,
+        prompt_messages: prompt,
         metrics: result[:metrics],
         raw: result[:content]
       }
@@ -34,6 +40,7 @@ module AgentLoop
         source: "fallback",
         provider: "ollama",
         model: @client.model,
+        prompt_messages: prompt_messages,
         error: e.message
       }
     end
@@ -59,8 +66,8 @@ module AgentLoop
       text = content.to_s.strip
       return text if text.start_with?("{") || text.start_with?("[")
 
-      starts = [text.index("{"), text.index("[")].compact
-      finish = [text.rindex("}"), text.rindex("]")].compact.max
+      starts = [ text.index("{"), text.index("[") ].compact
+      finish = [ text.rindex("}"), text.rindex("]") ].compact.max
       start = starts.min
       raise "Model không trả JSON hợp lệ" unless start && finish && finish > start
 
@@ -91,7 +98,7 @@ module AgentLoop
 
     def markdown_output(questions, source:)
       label = source == "model" ? "AI đề xuất" : "Fallback theo nội dung yêu cầu"
-      lines = ["### Cần làm rõ thêm", "#{label} #{questions.length} câu hỏi và các câu trả lời gợi ý:", ""]
+      lines = [ "### Cần làm rõ thêm", "#{label} #{questions.length} câu hỏi và các câu trả lời gợi ý:", "" ]
       questions.each do |question|
         lines << "- **#{question[:question]}**"
         question[:options].each { |option| lines << "  - #{option}" }
@@ -112,19 +119,19 @@ module AgentLoop
           id: "audience_context",
           question: "Ngữ cảnh người nhận hoặc khách hàng nên được hiểu theo hướng nào?",
           type: "choice",
-          options: ["SMB cần giải pháp nhanh", "Enterprise quan tâm bảo mật và tích hợp", "Đội mua hàng cần ROI rõ", "Chưa xác định, agent tự giả định hợp lý"]
+          options: [ "SMB cần giải pháp nhanh", "Enterprise quan tâm bảo mật và tích hợp", "Đội mua hàng cần ROI rõ", "Chưa xác định, agent tự giả định hợp lý" ]
         },
         {
           id: "depth",
           question: "Mức độ chi tiết bạn muốn agent dùng là gì?",
           type: "choice",
-          options: ["Ngắn gọn để gửi ngay", "Có luận điểm và bằng chứng", "Chi tiết theo từng bước", "Chỉ cần khung nháp để chỉnh tiếp"]
+          options: [ "Ngắn gọn để gửi ngay", "Có luận điểm và bằng chứng", "Chi tiết theo từng bước", "Chỉ cần khung nháp để chỉnh tiếp" ]
         },
         {
           id: "tone",
           question: "Giọng văn nên theo hướng nào?",
           type: "choice",
-          options: ["Chuyên nghiệp, trực tiếp", "Tư vấn mềm và thân thiện", "Thuyết phục theo số liệu", "Trung lập để dễ tuỳ chỉnh"]
+          options: [ "Chuyên nghiệp, trực tiếp", "Tư vấn mềm và thân thiện", "Thuyết phục theo số liệu", "Trung lập để dễ tuỳ chỉnh" ]
         }
       ]
     end
@@ -136,7 +143,7 @@ module AgentLoop
       options << "Proposal ngắn có bullet" if text.include?("proposal") || text.include?("đề xuất")
       options << "Battlecard so sánh đối thủ" if text.include?("battlecard") || text.include?("đối thủ")
       options << "Câu trả lời RFP/RFI" if text.include?("rfp") || text.include?("rfi")
-      (options + ["Tóm tắt tư vấn presales", "Checklist hành động tiếp theo", "Bản nháp có thể chỉnh sửa"]).uniq.first(MAX_OPTIONS)
+      (options + [ "Tóm tắt tư vấn presales", "Checklist hành động tiếp theo", "Bản nháp có thể chỉnh sửa" ]).uniq.first(MAX_OPTIONS)
     end
   end
 end

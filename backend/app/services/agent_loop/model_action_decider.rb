@@ -27,6 +27,10 @@ module AgentLoop
       @client = client
     end
 
+    def prompt_messages
+      messages
+    end
+
     def call
       return forced_final if @iteration >= @max_iterations
 
@@ -46,7 +50,8 @@ module AgentLoop
     private
 
     def decide
-      result = @client.chat_with_metrics(messages: messages, temperature: 0, format: "json")
+      @last_prompt_messages = prompt_messages
+      result = @client.chat_with_metrics(messages: @last_prompt_messages, temperature: 0, format: "json")
       parsed = parse(result[:content])
       build(parsed[:action], parsed[:reason], source: "model", metrics: result[:metrics], raw: result[:content])
     rescue StandardError => e
@@ -168,6 +173,7 @@ module AgentLoop
         provider: "ollama",
         model: @client.model,
         metrics: metrics,
+        prompt_messages: @last_prompt_messages,
         raw: raw,
         output: markdown(normalized, reason, source)
       }

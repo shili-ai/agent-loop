@@ -67,6 +67,7 @@ module AgentLoop
       state = {
         documents: [],
         web_results: [],
+        web_pages: [],
         artifact: nil,
         artifact_tool: nil,
         clarification: nil,
@@ -142,6 +143,7 @@ module AgentLoop
         {
           provider: "ollama",
           model: analyzer.client.model,
+          prompt_messages: analyzer.prompt_messages,
           output: nil,
           status: "running",
           request_started_at: Time.now.utc.iso8601(6)
@@ -153,13 +155,13 @@ module AgentLoop
       if analysis[:source] == "model"
         step.update!(
           summary: "#{initial_summary}\nModel #{analyzer.client.model} đã phân tích xong yêu cầu#{duration ? " (mất #{duration})" : ""}.",
-          data: result[:metrics].merge(output: analysis[:output], raw: result[:raw], status: "completed")
+          data: result[:metrics].merge(prompt_messages: analyzer.prompt_messages, output: analysis[:output], raw: result[:raw], status: "completed")
         )
       else
         step.update!(
           title: "Fallback khi model phân tích lỗi",
           summary: "Model phân tích bị lỗi, dùng IntentClassifier và LoopPlanBuilder dự phòng.",
-          data: result[:metrics].merge(output: analysis[:output], error: analysis[:error], status: "failed")
+          data: result[:metrics].merge(prompt_messages: analyzer.prompt_messages, output: analysis[:output], error: analysis[:error], status: "failed")
         )
       end
       analysis
@@ -284,6 +286,29 @@ module AgentLoop
             output: WebSearchNoteBuilder.new(results: results, candidates: candidates, raw_results: raw_results).call
           }
         )
+        if results.any?
+          pages = WebPageReader.new(results: results).call
+          readable_pages = pages.select { |page| page[:status] == "read" && page[:content].present? }
+          state[:web_pages] = readable_pages
+          append_working_note(
+            state,
+            action: "web_read",
+            summary: readable_pages.any? ? "Đã đọc nội dung #{readable_pages.count} trang web đạt chuẩn: #{titles_of(readable_pages)}." : "Có link đạt chuẩn nhưng chưa đọc được nội dung trang.",
+            evidence_count: readable_pages.count,
+            titles: readable_pages.map { |page| page[:title] }
+          )
+          create_step(
+            run,
+            "web_read",
+            "Đọc trang web",
+            readable_pages.any? ? "Mình đọc nội dung chính của #{readable_pages.count} trang đạt chuẩn để đưa vào brief cho model." : "Mình thử đọc trang đạt chuẩn nhưng chưa trích được nội dung HTML hữu ích.",
+            {
+              tools: [ "web_page_reader" ],
+              pages: pages,
+              output: WebPageReadNoteBuilder.new(pages: pages).call
+            }
+          )
+        end
       when "draft_artifact"
         artifact_result = ArtifactBuilder.new(intent: intent, documents: state[:documents]).call
         state[:artifact] = artifact_result[:artifact]
@@ -340,6 +365,7 @@ module AgentLoop
         tools: tools,
         documents: state[:documents] || [],
         web_results: state[:web_results] || [],
+        web_pages: state[:web_pages] || [],
         artifact: state[:artifact],
         working_notes: state[:working_notes] || []
       }
@@ -368,6 +394,7 @@ module AgentLoop
         {
           provider: "ollama",
           model: generator.client.model,
+          prompt_messages: generator.prompt_messages,
           output: nil,
           status: "running",
           request_started_at: Time.now.utc.iso8601(6)
@@ -378,14 +405,14 @@ module AgentLoop
       duration = format_duration(result.dig(:metrics, :total_duration_ms))
       step.update!(
         summary: "Model #{generator.client.model} đã soạn xong nội dung câu trả lời#{duration ? " (mất #{duration})" : ""}.",
-        data: result[:metrics].merge(output: answer, status: "completed")
+        data: result[:metrics].merge(prompt_messages: generator.prompt_messages, output: answer, status: "completed")
       )
       answer
     rescue StandardError => e
       step&.update!(
         title: "Fallback khi model local lỗi",
         summary: "Model local bị lỗi, dùng bộ tổng hợp mặc định.",
-        data: { error: e.message, output: nil, status: "failed" }
+        data: { error: e.message, prompt_messages: generator&.prompt_messages, output: nil, status: "failed" }
       )
       nil
     end

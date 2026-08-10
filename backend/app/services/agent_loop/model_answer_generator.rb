@@ -9,6 +9,10 @@ module AgentLoop
 
     attr_reader :client
 
+    def prompt_messages
+      messages
+    end
+
     def call
       @client.chat(messages: messages)
     end

@@ -139,8 +139,15 @@ module AgentLoop
     def web_source_lines
       web_results.map do |result|
         url = result[:url].present? ? " ([nguồn](#{result[:url]}))" : ""
-        "- **#{result[:title]}**#{url}: #{result[:snippet]}"
+        page = web_page_for(result[:url])
+        summary = page&.dig(:description).presence || page&.dig(:content).to_s.first(240).presence || result[:snippet]
+        "- **#{result[:title]}**#{url}: #{summary}"
       end
+    end
+
+    def web_page_for(url)
+      normalized_url = normalize_url(url)
+      web_pages.find { |page| normalize_url(page[:url]) == normalized_url }
     end
 
     def headline
@@ -165,6 +172,10 @@ module AgentLoop
 
     def web_results
       @tool_result[:web_results] || []
+    end
+
+    def web_pages
+      @tool_result[:web_pages] || []
     end
   end
 end
