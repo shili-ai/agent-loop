@@ -1,7 +1,10 @@
-import { FolderOpenOutlined } from "@ant-design/icons";
-import { Empty, Flex, List, Spin } from "antd";
+import { CloseOutlined, CodeOutlined, DownloadOutlined, EyeOutlined, FolderOpenOutlined } from "@ant-design/icons";
+import { Empty, Flex, List, Spin, Tooltip } from "antd";
+import { useState } from "react";
 import { pendingClarification } from "../../lib/clarification";
+import { triggerLibraryDownload, type LibraryItem } from "../../lib/conversationLibrary";
 import type { AgentConversation, AgentMessage, AgentProject, AgentRun } from "../../types/agent";
+import MarkdownContent from "../atoms/MarkdownContent";
 import ChatComposer from "../molecules/ChatComposer";
 import ClarificationForm from "../molecules/ClarificationForm";
 import ConversationTools from "../molecules/ConversationTools";
@@ -16,8 +19,11 @@ type AgentChatPanelProps = {
   latestRun?: AgentRun;
   loading: boolean;
   message: string;
+  model: string;
+  modelOptions: string[];
   sending: boolean;
   onChangeMessage: (message: string) => void;
+  onChangeModel: (model: string) => void;
   onSend: () => void;
   onClarify: (text: string) => void;
   onDelete: () => void;
@@ -31,8 +37,11 @@ export default function AgentChatPanel({
   latestRun,
   loading,
   message,
+  model,
+  modelOptions,
   sending,
   onChangeMessage,
+  onChangeModel,
   onSend,
   onClarify,
   onDelete,
@@ -40,86 +49,166 @@ export default function AgentChatPanel({
   const clarificationQuestions = pendingClarification(latestRun);
   const projectTitle = conversation?.project?.title ?? activeProject?.title;
   const currentTitle = conversation?.title || (draft ? "Đoạn chat mới" : "Trợ lý presales");
+  const [previewItem, setPreviewItem] = useState<LibraryItem | null>(null);
+  const [previewMode, setPreviewMode] = useState<"preview" | "markdown">("preview");
+  const [previewScope, setPreviewScope] = useState<string | null>(null);
+  const currentScope = draft ? "draft" : conversation?.id ? `conversation:${conversation.id}` : null;
+  const activePreviewItem = previewScope === currentScope ? previewItem : null;
+
+  function openPreview(item: LibraryItem) {
+    setPreviewMode("preview");
+    setPreviewScope(currentScope);
+    setPreviewItem(item);
+  }
 
   return (
-    <div className="chat-column">
-      <Flex justify="space-between" align="center" className="chat-header">
-        <div className="chat-header-copy">
-          <span className="chat-breadcrumb">
-            {projectTitle ? (
-              <>
-                <span className="chat-breadcrumb-project">
-                  <FolderOpenOutlined />
-                  {projectTitle}
-                </span>
-                <span className="chat-breadcrumb-sep">/</span>
-              </>
-            ) : null}
-            <span className="chat-breadcrumb-current">{currentTitle}</span>
-          </span>
-        </div>
-        <div className="chat-header-right">
-          <ConversationTools conversation={conversation} onDelete={onDelete} />
-        </div>
-      </Flex>
+    <div className={activePreviewItem ? "chat-workspace has-library-preview" : "chat-workspace"}>
+      <div className="chat-column">
+        <Flex justify="space-between" align="center" className="chat-header">
+          <div className="chat-header-copy">
+            <span className="chat-breadcrumb">
+              {projectTitle ? (
+                <>
+                  <span className="chat-breadcrumb-project">
+                    <FolderOpenOutlined />
+                    {projectTitle}
+                  </span>
+                  <span className="chat-breadcrumb-sep">/</span>
+                </>
+              ) : null}
+              <span className="chat-breadcrumb-current">{currentTitle}</span>
+            </span>
+          </div>
+          <div className="chat-header-right">
+            <ConversationTools conversation={conversation} onDelete={onDelete} onOpenLibraryItem={openPreview} />
+          </div>
+        </Flex>
 
-      {draft ? (
-        <div className="chat-hero">
-          <div className="chat-hero-inner">
-            <h2 className="chat-hero-title">Bắt đầu đoạn chat mới</h2>
-            <p className="chat-hero-subtitle">Nhập yêu cầu để trợ lý presales bắt đầu hỗ trợ bạn.</p>
+        {draft ? (
+          <div className="chat-hero">
+            <div className="chat-hero-inner">
+              <h2 className="chat-hero-title">Bắt đầu đoạn chat mới</h2>
+              <p className="chat-hero-subtitle">Nhập yêu cầu để trợ lý presales bắt đầu hỗ trợ bạn.</p>
+              <ChatComposer
+                disabled={disabled}
+                message={message}
+                model={model}
+                modelOptions={modelOptions}
+                sending={sending}
+                onChange={onChangeMessage}
+                onChangeModel={onChangeModel}
+                onSend={onSend}
+              />
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="messages-scroll">
+              {loading ? (
+                <Flex justify="center" align="center" className="empty-state">
+                  <Spin />
+                </Flex>
+              ) : conversation?.messages.length ? (
+                <div className="chat-thread">
+                  <List
+                    split={false}
+                    dataSource={buildChatItems(conversation, sending)}
+                    renderItem={(item) =>
+                      item.type === "message" ? (
+                        <MessageBubble message={item.message} />
+                      ) : (
+                        <InlineAgentRun
+                          finalAnswer={item.finalAnswer}
+                          pending={item.pending}
+                          run={item.run}
+                          onOpenLibraryItem={openPreview}
+                        />
+                      )
+                    }
+                  />
+                </div>
+              ) : (
+                <Flex justify="center" align="center" className="empty-state">
+                  <Empty description={conversation ? "Gửi tin nhắn đầu tiên để chạy agent loop" : "Chọn hoặc tạo đoạn chat mới"} />
+                </Flex>
+              )}
+            </div>
+
+            {clarificationQuestions.length > 0 ? (
+              <div className="clarification-dock">
+                <ClarificationForm questions={clarificationQuestions} disabled={disabled} onSubmit={onClarify} />
+              </div>
+            ) : null}
+
             <ChatComposer
               disabled={disabled}
               message={message}
+              model={model}
+              modelOptions={modelOptions}
               sending={sending}
               onChange={onChangeMessage}
+              onChangeModel={onChangeModel}
               onSend={onSend}
             />
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="messages-scroll">
-            {loading ? (
-              <Flex justify="center" align="center" className="empty-state">
-                <Spin />
-              </Flex>
-            ) : conversation?.messages.length ? (
-              <div className="chat-thread">
-                <List
-                  split={false}
-                  dataSource={buildChatItems(conversation, sending)}
-                  renderItem={(item) =>
-                    item.type === "message" ? (
-                      <MessageBubble message={item.message} />
-                    ) : (
-                      <InlineAgentRun finalAnswer={item.finalAnswer} pending={item.pending} run={item.run} />
-                    )
-                  }
-                />
+          </>
+        )}
+      </div>
+
+      {activePreviewItem ? (
+        <aside className="library-preview-panel">
+          <div className="library-preview-header">
+            <div className="library-preview-title">
+              <span className="library-preview-breadcrumb">Thư viện /</span>
+              <span>{activePreviewItem.name || activePreviewItem.title}</span>
+            </div>
+            {activePreviewItem.content ? (
+              <div className="library-preview-tabs" aria-label="Chế độ xem tài liệu">
+                <button
+                  type="button"
+                  className={previewMode === "preview" ? "library-preview-tab active" : "library-preview-tab"}
+                  aria-label="Xem trước"
+                  onClick={() => setPreviewMode("preview")}
+                >
+                  <Tooltip title="Xem trước">
+                    <EyeOutlined />
+                  </Tooltip>
+                </button>
+                <button
+                  type="button"
+                  className={previewMode === "markdown" ? "library-preview-tab active" : "library-preview-tab"}
+                  aria-label="Markdown"
+                  onClick={() => setPreviewMode("markdown")}
+                >
+                  <Tooltip title="Markdown">
+                    <CodeOutlined />
+                  </Tooltip>
+                </button>
               </div>
+            ) : null}
+            <div className="library-preview-actions">
+              {activePreviewItem.content ? (
+                <button type="button" className="chat-tool-btn" aria-label="Tải xuống" onClick={() => triggerLibraryDownload(activePreviewItem)}>
+                  <DownloadOutlined />
+                </button>
+              ) : null}
+              <button type="button" className="chat-tool-btn" aria-label="Đóng xem trước" onClick={() => setPreviewItem(null)}>
+                <CloseOutlined />
+              </button>
+            </div>
+          </div>
+          <div className="library-preview-body">
+            {activePreviewItem.content ? (
+              previewMode === "preview" ? (
+                <MarkdownContent className="markdown-content library-preview-markdown">{activePreviewItem.content}</MarkdownContent>
+              ) : (
+                <pre className="library-preview-raw">{activePreviewItem.content}</pre>
+              )
             ) : (
-              <Flex justify="center" align="center" className="empty-state">
-                <Empty description={conversation ? "Gửi tin nhắn đầu tiên để chạy agent loop" : "Chọn hoặc tạo đoạn chat mới"} />
-              </Flex>
+              <div className="library-preview-empty">Không có nội dung xem trước cho mục này.</div>
             )}
           </div>
-
-          {clarificationQuestions.length > 0 ? (
-            <div className="clarification-dock">
-              <ClarificationForm questions={clarificationQuestions} disabled={disabled} onSubmit={onClarify} />
-            </div>
-          ) : null}
-
-          <ChatComposer
-            disabled={disabled}
-            message={message}
-            sending={sending}
-            onChange={onChangeMessage}
-            onSend={onSend}
-          />
-        </>
-      )}
+        </aside>
+      ) : null}
     </div>
   );
 }

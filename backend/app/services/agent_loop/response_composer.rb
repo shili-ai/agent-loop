@@ -9,7 +9,7 @@ module AgentLoop
     end
 
     def call
-      return @model_answer if @model_answer.present?
+      return model_answer_with_web_sources if @model_answer.present?
       return clarification_answer if @clarification.present?
 
       artifact = @tool_result[:artifact]
@@ -38,8 +38,45 @@ module AgentLoop
 
     private
 
+    def model_answer_with_web_sources
+      answer = sanitize_unverified_links(@model_answer.to_s.strip)
+      return answer if web_results.blank?
+      return answer if answer.include?("**Nguồn web đã dùng:**")
+
+      [
+        answer,
+        "",
+        web_sources_section
+      ].join("\n")
+    end
+
+    def sanitize_unverified_links(answer)
+      sanitized = answer.gsub(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/i) do
+        label = Regexp.last_match(1)
+        url = Regexp.last_match(2)
+        verified_url?(url) ? "[#{label}](#{url})" : label
+      end
+
+      sanitized.gsub(/https?:\/\/[^\s\)\]\}>,]+/i) do |url|
+        verified_url?(url) ? url : ""
+      end
+    end
+
+    def verified_url?(url)
+      normalized_url = normalize_url(url)
+      verified_urls.any? { |verified| normalized_url == verified || normalized_url.start_with?("#{verified}/") }
+    end
+
+    def verified_urls
+      @verified_urls ||= web_results.filter_map { |result| normalize_url(result[:url]) if result[:url].present? }
+    end
+
+    def normalize_url(url)
+      url.to_s.strip.sub(/[.,;:!?]+\z/, "").delete_suffix("/").downcase
+    end
+
     def clarification_answer
-      lines = ["Mình cần thêm một chút ngữ cảnh để trả lời chính xác hơn:", ""]
+      lines = [ "Mình cần thêm một chút ngữ cảnh để trả lời chính xác hơn:", "" ]
       @clarification[:questions].each do |question|
         text = question.is_a?(Hash) ? question[:question] : question
         lines << "- #{text}"
@@ -48,7 +85,7 @@ module AgentLoop
     end
 
     def document_search_answer
-      lines = ["Mình đã tìm được các tài liệu demo liên quan:", ""]
+      lines = [ "Mình đã tìm được các tài liệu demo liên quan:", "" ]
       @tool_result[:documents].each do |document|
         lines << "- **#{document[:title]}** (`#{document[:type]}`): #{document[:snippet]}"
       end
@@ -58,14 +95,22 @@ module AgentLoop
     end
 
     def web_search_answer
-      lines = ["Mình đã tìm được các kết quả web liên quan:", ""]
-      web_results.each do |result|
-        url = result[:url].present? ? " ([nguồn](#{result[:url]}))" : ""
-        lines << "- **#{result[:title]}**#{url}: #{result[:snippet]}"
-      end
+      lines = [ "Mình đã tìm được các kết quả web liên quan:", "" ]
+      lines.concat(web_source_lines)
       lines << ""
       lines << missing_context_prompt if needs_more_context?
       lines.compact.join("\n")
+    end
+
+    def web_sources_section
+      [ "**Nguồn web đã dùng:**", *web_source_lines ].join("\n")
+    end
+
+    def web_source_lines
+      web_results.map do |result|
+        url = result[:url].present? ? " ([nguồn](#{result[:url]}))" : ""
+        "- **#{result[:title]}**#{url}: #{result[:snippet]}"
+      end
     end
 
     def headline

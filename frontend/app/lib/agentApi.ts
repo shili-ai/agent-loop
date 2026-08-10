@@ -79,9 +79,9 @@ export function deleteConversation(id: number) {
   });
 }
 
-export function sendConversationMessage(conversationId: number, content: string) {
+export function sendConversationMessage(conversationId: number, content: string, model?: string) {
   return request<AgentConversation>(`/api/agent_conversations/${conversationId}/messages`, {
     method: "POST",
-    body: JSON.stringify({ message: { content } }),
+    body: JSON.stringify({ message: { content, model } }),
   });
 }

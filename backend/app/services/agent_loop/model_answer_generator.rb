@@ -2,9 +2,9 @@ require "json"
 
 module AgentLoop
   class ModelAnswerGenerator
-    def initialize(brief:)
+    def initialize(brief:, client: LocalModelClient.new)
       @brief = brief
-      @client = LocalModelClient.new
+      @client = client
     end
 
     attr_reader :client

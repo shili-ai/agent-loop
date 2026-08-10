@@ -11,6 +11,9 @@ Trạng thái hiện tại:
 - Đã có bản nháp: {{has_artifact}}
 - Đã hỏi làm rõ: {{clarified}}
 
+Ghi chú làm việc từ các bước trước:
+{{working_notes}}
+
 Tin nhắn gần đây trong chat:
 {{recent_messages}}
 

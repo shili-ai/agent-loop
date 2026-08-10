@@ -208,6 +208,7 @@ module AgentLoop
         web_attempts: web_attempts,
         has_artifact: artifact? ? "có" : "chưa",
         clarified: clarified? || answered_clarification? ? "rồi" : "chưa",
+        working_notes: working_notes_prompt,
         recent_messages: recent_messages_prompt
       )
     end
@@ -235,6 +236,17 @@ module AgentLoop
 
     def web_attempts
       @state[:web_attempts].to_i
+    end
+
+    def working_notes_prompt
+      notes = Array(@state[:working_notes]).last(8)
+      return "Chưa có." if notes.empty?
+
+      notes.map do |note|
+        action = note[:action] || note["action"]
+        summary = note[:summary] || note["summary"]
+        "- #{action}: #{summary}"
+      end.join("\n")
     end
 
     def clarified?

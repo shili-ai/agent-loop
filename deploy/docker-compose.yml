@@ -9,7 +9,7 @@ services:
       SECRET_KEY_BASE: ${SECRET_KEY_BASE:-local_deploy_secret_key_base_change_me_1234567890}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1:8b}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
     ports:
       - "${BACKEND_PORT:-3001}:80"
     volumes:

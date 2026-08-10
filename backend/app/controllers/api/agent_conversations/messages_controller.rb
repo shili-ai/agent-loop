@@ -3,7 +3,7 @@ module Api
     class MessagesController < ApplicationController
       def create
         conversation = AgentConversation.find(params[:agent_conversation_id])
-        AgentLoop::Runner.enqueue(conversation: conversation, content: message_params[:content])
+        AgentLoop::Runner.enqueue(conversation: conversation, content: message_params[:content], model: message_params[:model])
 
         render json: AgentConversationSerializer.new(conversation.reload).as_json, status: :accepted
       end
@@ -11,7 +11,7 @@ module Api
       private
 
       def message_params
-        params.require(:message).permit(:content)
+        params.require(:message).permit(:content, :model)
       end
     end
   end

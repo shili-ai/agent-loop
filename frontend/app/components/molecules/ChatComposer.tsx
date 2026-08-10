@@ -3,16 +3,22 @@ import { ArrowUpOutlined, PlusOutlined } from "@ant-design/icons";
 type ChatComposerProps = {
   disabled: boolean;
   message: string;
+  model: string;
+  modelOptions: string[];
   sending: boolean;
   onChange: (message: string) => void;
+  onChangeModel: (model: string) => void;
   onSend: () => void;
 };
 
 export default function ChatComposer({
   disabled,
   message,
+  model,
+  modelOptions,
   sending,
   onChange,
+  onChangeModel,
   onSend,
 }: ChatComposerProps) {
   const canSend = Boolean(message.trim()) && !disabled;
@@ -45,6 +51,19 @@ export default function ChatComposer({
             }}
           />
         </div>
+        <select
+          className="composer-model-select"
+          value={model}
+          disabled={disabled}
+          aria-label="Chọn model"
+          onChange={(event) => onChangeModel(event.target.value)}
+        >
+          {modelOptions.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
         <button
           type="submit"
           className={canSend || sending ? "composer-send active" : "composer-send"}

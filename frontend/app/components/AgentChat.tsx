@@ -20,6 +20,8 @@ import AgentChatPanel from "./organisms/AgentChatPanel";
 import AgentSidebar from "./organisms/AgentSidebar";
 import AgentChatTemplate from "./templates/AgentChatTemplate";
 
+const MODEL_OPTIONS = ["llama3.2:3b", "llama3.1:8b"];
+
 function conversationIdFromPath(pathname: string): number | null {
   const match = /^\/chat\/(\d+)/.exec(pathname);
   return match ? Number(match[1]) : null;
@@ -48,6 +50,7 @@ export default function AgentChat() {
   const [sidebarConversations, setSidebarConversations] = useState<AgentConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [selectedModel, setSelectedModel] = useState(MODEL_OPTIONS[0]);
   const [projects, setProjects] = useState<AgentProject[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -228,7 +231,7 @@ export default function AgentChat() {
       };
       setConversation({ ...active, messages: [...active.messages, optimisticUserMessage] });
 
-      const updated = await sendConversationMessage(active.id, text);
+      const updated = await sendConversationMessage(active.id, text, selectedModel);
       setConversation(updated);
       setMessage("");
       await Promise.all([
@@ -267,8 +270,11 @@ export default function AgentChat() {
           latestRun={latestRun}
           loading={loading}
           message={message}
+          model={selectedModel}
+          modelOptions={MODEL_OPTIONS}
           sending={sending}
           onChangeMessage={setMessage}
+          onChangeModel={setSelectedModel}
           onSend={() => handleSend()}
           onClarify={(text) => handleSend(text)}
           onDelete={handleDeleteConversation}

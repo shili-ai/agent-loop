@@ -7,6 +7,79 @@ module AgentLoop
   class WebSearch
     DEFAULT_ENDPOINT = "https://api.duckduckgo.com/"
     DEFAULT_LIMIT = 5
+    BLOCKED_DOMAIN_PARTS = %w[
+      xvideos
+      xnxx
+      xhamster
+      pornhub
+      redtube
+      youporn
+      spankbang
+      rule34
+      onlyfans
+      fansly
+      fandom.com
+      ptt.cc
+      reddit.com
+      quora.com
+      pinterest.com
+      literotica
+      nhentai
+      hentai
+    ].freeze
+    BLOCKED_TEXT_TERMS = [
+      "porn",
+      "porno",
+      "sex",
+      "xxx",
+      "adult video",
+      "/forum/",
+      "/threads/",
+      "discussion forum",
+      "forums",
+      "bulletin board",
+      "nude",
+      "nsfw",
+      "hentai",
+      "rule 34",
+      "rule34",
+      "onlyfans",
+      "xvideos",
+      "xnxx"
+    ].freeze
+    TRUSTED_DOMAIN_PARTS = %w[
+      wikipedia.org
+      wiktionary.org
+      britannica.com
+      youtube.com
+      linkedin.com
+      instagram.com
+      github.com
+      microsoft.com
+      google.com
+      apple.com
+      amazon.com
+      cloudflare.com
+      salesforce.com
+      hubspot.com
+      oracle.com
+      ibm.com
+      .gov
+      .edu
+    ].freeze
+    SEARCH_EXCLUSIONS = %w[
+      -porn
+      -porno
+      -sex
+      -xxx
+      -nsfw
+      -hentai
+      -rule34
+      -xvideos
+      -xnxx
+      -pornhub
+      -onlyfans
+    ].freeze
 
     def initialize(query:, limit: DEFAULT_LIMIT, endpoint: ENV.fetch("WEB_SEARCH_ENDPOINT", DEFAULT_ENDPOINT))
       @query = query.to_s
@@ -23,7 +96,7 @@ module AgentLoop
 
       rss_results
     rescue StandardError => e
-      [{ title: "Web search không khả dụng", url: nil, snippet: utf8(e.message), source: "error" }]
+      [ { title: "Web search không khả dụng", url: nil, snippet: utf8(e.message), source: "error" } ]
     end
 
     private
@@ -32,10 +105,10 @@ module AgentLoop
       uri = URI(@endpoint)
       params = URI.decode_www_form(uri.query.to_s)
       params += [
-        ["q", @search_query],
-        ["format", "json"],
-        ["no_html", "1"],
-        ["skip_disambig", "1"]
+        [ "q", safe_search_query ],
+        [ "format", "json" ],
+        [ "no_html", "1" ],
+        [ "skip_disambig", "1" ]
       ]
       uri.query = URI.encode_www_form(params)
 
@@ -48,7 +121,14 @@ module AgentLoop
 
     def rss_results
       uri = URI("https://www.bing.com/search")
-      uri.query = URI.encode_www_form(q: @search_query, format: "rss", mkt: "en-US", setlang: "en-US", cc: "US")
+      uri.query = URI.encode_www_form(
+        q: safe_search_query,
+        format: "rss",
+        mkt: "en-US",
+        setlang: "en-US",
+        cc: "US",
+        safeSearch: "Strict"
+      )
 
       response = fetch(uri)
       raise "Web search failed: #{response.code}" unless response.is_a?(Net::HTTPSuccess)
@@ -69,7 +149,7 @@ module AgentLoop
       results = []
       add_result(results, data["Heading"], data["AbstractURL"], data["AbstractText"], "abstract")
       collect_related_topics(data["RelatedTopics"], results)
-      results.uniq { |item| [item[:title], item[:url]] }.first(@limit)
+      ranked_results(results).first(@limit)
     end
 
     def parse_rss(xml)
@@ -77,20 +157,33 @@ module AgentLoop
         title = item[%r{<title>(.*?)</title>}m, 1]
         url = item[%r{<link>(.*?)</link>}m, 1]
         snippet = item[%r{<description>(.*?)</description>}m, 1]
-        next if noisy_result?(title, url)
+        clean_title = clean_html(title)
+        clean_url = clean_html(url)
+        clean_snippet = clean_html(snippet)
+        next if noisy_result?(clean_title, clean_url, clean_snippet)
+        next unless relevant_result?(clean_title, clean_url, clean_snippet)
 
         {
-          title: clean_html(title),
-          url: clean_html(url),
-          snippet: clean_html(snippet),
+          title: clean_title,
+          url: clean_url,
+          snippet: clean_snippet,
           source: "bing_rss"
         }
-      end.compact.uniq { |item| [item[:title], item[:url]] }.first(@limit)
+      end.compact
+        .uniq { |item| [ item[:title], item[:url] ] }
+        .sort_by { |item| result_rank(item) }
+        .first(@limit)
     end
 
-    def noisy_result?(title, url)
-      text = "#{title} #{url}".downcase
-      text.include?("login") || text.include?("signin") || text.include?("sign-in")
+    def noisy_result?(title, url, snippet = nil)
+      return true if title.to_s.gsub(/[-–—\s]/, "").blank?
+
+      text = "#{title} #{url} #{snippet}".downcase
+      return true if text.include?("login") || text.include?("signin") || text.include?("sign-in")
+      return true if BLOCKED_TEXT_TERMS.any? { |term| text.include?(term) }
+
+      host = host_for(url)
+      BLOCKED_DOMAIN_PARTS.any? { |part| host.include?(part) }
     end
 
     def collect_related_topics(items, results)
@@ -108,6 +201,8 @@ module AgentLoop
       clean_title = normalize_text(title)
       clean_snippet = normalize_text(snippet)
       return if clean_title.empty? && clean_snippet.empty?
+      return if noisy_result?(clean_title, present_string(url), clean_snippet)
+      return unless relevant_result?(clean_title, present_string(url), clean_snippet)
 
       results << {
         title: clean_title.empty? ? truncate(clean_snippet, 80) : clean_title,
@@ -132,6 +227,7 @@ module AgentLoop
       text = text.gsub(/yêu cầu gốc:/i, " ")
       text = text.gsub(/người dùng đã bổ sung.*?:/i, " ")
       text = text.gsub(/tìm trên web|search web|tìm web|tra cứu web|google giúp tôi/i, " ")
+      text = text.gsub(/từ khoá|từ khóa|keyword/i, " ")
       text = text.gsub(/giúp tôi|giúp mình|cho tôi|cho mình/i, " ")
       text = text.gsub(/thông tin mới nhất về/i, " ")
       text = text.gsub(/đối thủ\s+(.+)/i, '\1 competitors')
@@ -145,6 +241,45 @@ module AgentLoop
       return "CRM SaaS trends current" if text.downcase.match?(/crm.*saas|saas.*crm/)
 
       text
+    end
+
+    def safe_search_query
+      base = @search_query.split.one? ? %("#{@search_query}") : @search_query
+      ([ base ] + SEARCH_EXCLUSIONS).join(" ")
+    end
+
+    def ranked_results(results)
+      items = results.uniq { |item| [ item[:title], item[:url] ] }.sort_by { |item| result_rank(item) }
+      trusted = items.select { |item| trusted_source?(item[:url]) }
+      trusted.any? ? trusted : items
+    end
+
+    def result_rank(item)
+      trusted_source?(item[:url]) ? 0 : 1
+    end
+
+    def trusted_source?(url)
+      host = host_for(url)
+      TRUSTED_DOMAIN_PARTS.any? { |part| host.include?(part) }
+    end
+
+    def relevant_result?(title, url, snippet)
+      tokens = @search_query.downcase.scan(/[\p{L}\p{N}]+/).select { |word| word.length >= 3 }
+      return true if tokens.empty?
+
+      text = "#{title} #{url} #{snippet}".downcase
+      return text.include?(tokens.first) if tokens.one?
+      return false unless text.include?(tokens.first)
+      return true if tokens[1..].any? { |token| text.include?(token) }
+
+      matched_count = tokens.count { |token| text.include?(token) }
+      matched_count >= (tokens.length * 0.6).ceil
+    end
+
+    def host_for(url)
+      URI(url.to_s).host.to_s.downcase.sub(/\Awww\./, "")
+    rescue URI::InvalidURIError
+      url.to_s.downcase
     end
 
     def clean_html(value)

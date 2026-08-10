@@ -4,25 +4,29 @@ import {
   BulbOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
+  DownloadOutlined,
+  FileTextOutlined,
   FileSearchOutlined,
   LoadingOutlined,
   RightOutlined,
   RobotOutlined,
   ToolOutlined,
 } from "@ant-design/icons";
-import { Space, Typography } from "antd";
+import { Space } from "antd";
 import { useState } from "react";
+import { collectRunOutputs, triggerLibraryDownload, type LibraryItem } from "../../lib/conversationLibrary";
 import type { AgentMessage, AgentRun, AgentStep } from "../../types/agent";
 import MarkdownContent from "../atoms/MarkdownContent";
 import MessageActions from "../atoms/MessageActions";
 
 type InlineAgentRunProps = {
   finalAnswer?: AgentMessage;
+  onOpenLibraryItem?: (item: LibraryItem) => void;
   pending?: boolean;
   run?: AgentRun;
 };
 
-export default function InlineAgentRun({ finalAnswer, pending = false, run }: InlineAgentRunProps) {
+export default function InlineAgentRun({ finalAnswer, onOpenLibraryItem, pending = false, run }: InlineAgentRunProps) {
   const steps = run?.steps ?? [];
   const visibleSteps = steps.filter((step) => step.kind !== "flow");
   const running = pending || run?.status === "running";
@@ -52,7 +56,7 @@ export default function InlineAgentRun({ finalAnswer, pending = false, run }: In
           </div>
         ) : null}
 
-        {!running ? <FinalAnswer message={finalAnswer} run={run} /> : null}
+        {!running ? <FinalAnswer message={finalAnswer} onOpenLibraryItem={onOpenLibraryItem} run={run} /> : null}
       </Space>
     </div>
   );
@@ -100,13 +104,60 @@ function StepActivity({ step }: { step: AgentStep }) {
   );
 }
 
-function FinalAnswer({ message, run }: { message?: AgentMessage; run?: AgentRun }) {
+function FinalAnswer({
+  message,
+  onOpenLibraryItem,
+  run,
+}: {
+  message?: AgentMessage;
+  onOpenLibraryItem?: (item: LibraryItem) => void;
+  run?: AgentRun;
+}) {
   const answer = message?.content ?? answerFromRun(run);
+  const outputs = collectRunOutputs(run);
   if (!answer) return null;
 
   return (
     <section className="final-answer-section">
       <MarkdownContent className="markdown-content codex-final-answer">{answer}</MarkdownContent>
+      {outputs.length ? (
+        <div className="assistant-output-cards">
+          {outputs.map((item) => (
+            <button
+              type="button"
+              className="assistant-output-card"
+              key={item.key}
+              onClick={() => onOpenLibraryItem?.(item)}
+            >
+              <span className="assistant-output-card-icon">
+                <FileTextOutlined />
+              </span>
+              <span className="assistant-output-card-copy">
+                <span className="assistant-output-card-title">{item.title}</span>
+                <span className="assistant-output-card-detail">{item.detail || "Tài liệu"}</span>
+              </span>
+              <span
+                className="assistant-output-card-download"
+                role="button"
+                tabIndex={0}
+                title="Tải xuống"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  triggerLibraryDownload(item);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  triggerLibraryDownload(item);
+                }}
+              >
+                <DownloadOutlined />
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
       <MessageActions content={answer} />
     </section>
   );
@@ -127,53 +178,171 @@ function reasoningText(step: AgentStep): string {
 }
 
 function StepIoPanel({ step }: { step: AgentStep }) {
+  const metadata = stepMetadata(step);
+  const input = stepInput(step);
+  const output = stepOutput(step);
+
   return (
     <div className="step-io-panel">
-      <div className="step-io-column">
-        <Typography.Text strong>Input</Typography.Text>
-        <pre>{JSON.stringify(stepInput(step), null, 2)}</pre>
-      </div>
-      <div className="step-io-column">
-        <Typography.Text strong>Output</Typography.Text>
-        <pre>{JSON.stringify(step.data, null, 2)}</pre>
+      {metadata.length ? (
+        <div className="step-detail-grid">
+          {metadata.map((item) => (
+            <div className={item.wide ? "step-detail-item wide" : "step-detail-item"} key={item.label}>
+              <span className="step-detail-label">{item.label}</span>
+              <span className="step-detail-value">{item.value}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <div className="step-io-sections">
+        <StepDataSection title="Input" data={input} />
+        {output ? <StepDataSection title="Output" data={output} /> : null}
       </div>
     </div>
   );
 }
 
-function stepInput(step: AgentStep) {
+function StepDataSection({
+  data,
+  title,
+}: {
+  data: { content: string };
+  title: string;
+}) {
+  return (
+    <section className="step-data-section">
+      <div className="step-data-title">{title}</div>
+      <pre className="step-detail-code">{data.content}</pre>
+    </section>
+  );
+}
+
+function stepMetadata(step: AgentStep) {
+  const data = step.data;
+  const items: { label: string; value: string; wide?: boolean }[] = [];
+  const addItem = (label: string, value: unknown, wide = false) => {
+    if (value === undefined || value === null) return;
+    const text = String(value).trim();
+    if (!text) return;
+    items.push({ label, value: text, wide });
+  };
+
+  addItem("Bước", step.title);
+  addItem("Loại", step.kind);
+
+  if (step.kind === "llm") {
+    addItem("Provider", data.provider);
+    addItem("Model", data.model);
+    addItem("Trạng thái", data.status);
+    addItem("Thời gian", formatMs(data.total_duration_ms));
+    addItem("Token đầu", formatMs(data.first_token_latency_ms));
+  }
+
+  if (step.kind === "decision") {
+    addItem("Vòng", data.iteration);
+    addItem("Action", data.action);
+    addItem("Nguồn", data.source);
+    addItem("Lý do", data.reason, true);
+  }
+
+  if (step.kind === "document_search" || step.kind === "web_search") {
+    addItem("Công cụ", Array.isArray(data.tools) ? data.tools.join(", ") : data.tools);
+    addItem("Từ khoá", Array.isArray(data.keywords) ? data.keywords.join(", ") : data.query);
+  }
+
+  if (step.kind === "artifact") {
+    addItem("Công cụ", Array.isArray(data.tools) ? data.tools.join(", ") : data.tools);
+    addItem("Tài liệu", artifactTitle(data.artifact));
+  }
+
+  return items;
+}
+
+function stepInput(step: AgentStep): { content: string } {
   const data = step.data;
   const base = { kind: step.kind, title: step.title, summary: step.summary };
 
   if (step.kind === "llm") {
     return {
-      ...base,
-      provider: data.provider,
-      model: data.model,
-      status: data.status,
-      first_token_latency_ms: data.first_token_latency_ms,
-      total_duration_ms: data.total_duration_ms,
-      streamed_chunks: data.streamed_chunks,
+      content: JSON.stringify(
+        {
+          ...base,
+          provider: data.provider,
+          model: data.model,
+          status: data.status,
+          request_started_at: data.request_started_at,
+        },
+        null,
+        2
+      ),
     };
   }
 
   if (step.kind === "decision") {
-    return { ...base, iteration: data.iteration, action: data.action, reason: data.reason, source: data.source };
+    return {
+      content: JSON.stringify(
+        {
+          ...base,
+          iteration: data.iteration,
+          action: data.action,
+          reason: data.reason,
+          source: data.source,
+        },
+        null,
+        2
+      ),
+    };
   }
 
   if (step.kind === "document_search" || step.kind === "web_search") {
-    return { ...base, tools: data.tools };
+    return {
+      content: JSON.stringify(
+        {
+          ...base,
+          tools: data.tools,
+          query: data.query,
+          keywords: data.keywords,
+        },
+        null,
+        2
+      ),
+    };
   }
 
   if (step.kind === "artifact") {
-    return { ...base, tools: data.tools, artifact_title: artifactTitle(data.artifact) };
+    return {
+      content: JSON.stringify(
+        {
+          ...base,
+          tools: data.tools,
+          artifact_title: artifactTitle(data.artifact),
+        },
+        null,
+        2
+      ),
+    };
   }
 
-  return compactData(data, ["output", "diagram"]);
+  return { content: JSON.stringify(base, null, 2) };
 }
 
-function compactData(data: Record<string, unknown>, omitKeys: string[]) {
-  return Object.fromEntries(Object.entries(data).filter(([key]) => !omitKeys.includes(key)));
+function stepOutput(step: AgentStep): { content: string } | null {
+  const data = step.data ?? {};
+  if (typeof data.output === "string" && data.output.trim()) {
+    return { content: data.output };
+  }
+
+  const compact = Object.fromEntries(
+    Object.entries(data).filter(([key]) => !["output", "raw", "diagram"].includes(key))
+  );
+  if (!Object.keys(compact).length) return null;
+
+  return { content: JSON.stringify(compact, null, 2) };
+}
+
+function formatMs(value: unknown) {
+  if (typeof value !== "number") return value;
+  return value < 1000 ? `${value} ms` : `${(value / 1000).toFixed(1)} s`;
 }
 
 function artifactTitle(artifact: unknown) {

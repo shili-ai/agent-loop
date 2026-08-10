@@ -4,14 +4,14 @@ module AgentLoop
   class Runner
     MAX_ITERATIONS = 20
 
-    def self.enqueue(conversation:, content:)
+    def self.enqueue(conversation:, content:, model: nil)
       user_message = conversation.agent_messages.create!(role: "user", content: content)
       run = conversation.agent_runs.create!(user_message: user_message, status: "running")
 
       Thread.new do
         Rails.application.executor.wrap do
           ActiveRecord::Base.connection_pool.with_connection do
-            new(conversation: conversation, content: content, run: run).call
+            new(conversation: conversation, content: content, model: model, run: run).call
           end
         end
       end
@@ -19,9 +19,10 @@ module AgentLoop
       run
     end
 
-    def initialize(conversation:, content:, run: nil)
+    def initialize(conversation:, content:, model: nil, run: nil)
       @conversation = conversation
       @content = content
+      @model = model.to_s.presence
       @run = run
     end
 
@@ -69,9 +70,23 @@ module AgentLoop
         artifact: nil,
         artifact_tool: nil,
         clarification: nil,
+        working_notes: [],
         search_attempts: 0,
         web_attempts: 0
       }
+      append_working_note(
+        state,
+        action: "analysis",
+        summary: analysis[:understanding],
+        intent: intent,
+        source: analysis[:source]
+      )
+      append_working_note(
+        state,
+        action: "plan",
+        summary: "Mục tiêu: #{plan[:goal]}; action dự kiến: #{Array(plan[:actions]).join(', ')}.",
+        planned_actions: Array(plan[:actions])
+      )
       loop_result = run_dynamic_loop(run, intent, state, plan, request_content, context)
       tool_result = build_tool_result(state)
       model_answer = loop_result[:action] == "final_answer" ? generate_model_answer(run, intent, tool_result, context, request_content) : nil
@@ -117,7 +132,7 @@ module AgentLoop
     private
 
     def build_model_analysis(run, request_content, context)
-      analyzer = ModelAnalysisBuilder.new(message: request_content, context: context)
+      analyzer = ModelAnalysisBuilder.new(message: request_content, context: context, client: local_model_client)
       initial_summary = "Mình gọi model #{analyzer.client.model} (qua Ollama) để hiểu yêu cầu, chọn intent và lập plan hành động."
       step = create_step(
         run,
@@ -154,7 +169,7 @@ module AgentLoop
       return unless @conversation.needs_generated_title?
       return unless @conversation.agent_runs.count <= 1
 
-      title = ConversationTitler.new(conversation: @conversation, latest_answer: assistant_message.content).call
+      title = ConversationTitler.new(conversation: @conversation, latest_answer: assistant_message.content, client: local_model_client).call
       @conversation.update!(title: title) if title.present?
     rescue StandardError => e
       Rails.logger.warn("[AgentLoop::Runner] title generation failed: #{e.class}: #{e.message}")
@@ -170,7 +185,8 @@ module AgentLoop
           iteration: iteration,
           max_iterations: MAX_ITERATIONS,
           plan: plan,
-          context: context
+          context: context,
+          client: local_model_client
         ).call
         create_step(
           run,
@@ -211,6 +227,14 @@ module AgentLoop
           else
             "Mình tra kho tài liệu nội bộ với từ khoá #{format_keywords(keywords)} nhưng chưa thấy tài liệu nào khớp."
           end
+        append_working_note(
+          state,
+          action: "search_documents",
+          summary: documents.any? ? "Tìm được #{documents.count} tài liệu nội bộ: #{titles_of(documents)}." : "Không tìm thấy tài liệu nội bộ phù hợp.",
+          evidence_count: documents.count,
+          keywords: keywords,
+          titles: documents.map { |document| document[:title] }
+        )
         create_step(
           run,
           "document_search",
@@ -229,6 +253,14 @@ module AgentLoop
           else
             "Mình tra cứu web với từ khoá #{format_keywords(keywords)} nhưng chưa thấy kết quả phù hợp."
           end
+        append_working_note(
+          state,
+          action: "web_search",
+          summary: results.any? ? "Tìm được #{results.count} nguồn web phù hợp: #{titles_of(results)}." : "Không tìm thấy nguồn web phù hợp sau khi lọc nguồn kém/chưa chính thống.",
+          evidence_count: results.count,
+          keywords: keywords,
+          titles: results.map { |result| result[:title] }
+        )
         create_step(
           run,
           "web_search",
@@ -242,6 +274,14 @@ module AgentLoop
         state[:artifact_tool] = artifact_result[:tool]
         bullets = Array(artifact_result[:artifact][:bullets])
         evidence = state[:documents].to_a.count
+        append_working_note(
+          state,
+          action: "draft_artifact",
+          summary: "Đã tạo bản nháp #{artifact_result[:artifact][:title]} với #{bullets.count} ý chính, dựa trên #{evidence} tài liệu.",
+          artifact_title: artifact_result[:artifact][:title],
+          bullet_count: bullets.count,
+          evidence_count: evidence
+        )
         create_step(
           run,
           "artifact",
@@ -254,9 +294,16 @@ module AgentLoop
           }
         )
       when "ask_clarification"
-        clarification = ClarificationBuilder.new(message: message).call
+        clarification = ClarificationBuilder.new(message: message, client: local_model_client).call
         state[:clarification] = clarification
         question_count = Array(clarification[:questions]).count
+        append_working_note(
+          state,
+          action: "ask_clarification",
+          summary: "Đã chuẩn bị #{question_count} câu hỏi làm rõ vì yêu cầu còn thiếu thông tin.",
+          question_count: question_count,
+          source: clarification[:source]
+        )
         create_step(
           run,
           "clarification",
@@ -277,7 +324,8 @@ module AgentLoop
         tools: tools,
         documents: state[:documents] || [],
         web_results: state[:web_results] || [],
-        artifact: state[:artifact]
+        artifact: state[:artifact],
+        working_notes: state[:working_notes] || []
       }
     end
 
@@ -288,6 +336,7 @@ module AgentLoop
 
     def generate_model_answer(run, intent, tool_result, context, request_content)
       generator = ModelAnswerGenerator.new(
+        client: local_model_client,
         brief: FinalBriefBuilder.new(
           user_message: request_content,
           intent: intent,
@@ -323,6 +372,20 @@ module AgentLoop
         data: { error: e.message, output: nil, status: "failed" }
       )
       nil
+    end
+
+    def local_model_client
+      @model.present? ? LocalModelClient.new(model: @model) : LocalModelClient.new
+    end
+
+    def append_working_note(state, action:, summary:, **metadata)
+      note = {
+        action: action,
+        summary: summary.to_s.squish,
+        at: Time.now.utc.iso8601(6)
+      }.merge(metadata.compact)
+      state[:working_notes] << note
+      state[:working_notes] = state[:working_notes].last(12)
     end
 
     def effective_content(context)

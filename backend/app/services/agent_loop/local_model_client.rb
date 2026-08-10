@@ -6,7 +6,7 @@ require "uri"
 module AgentLoop
   class LocalModelClient
     DEFAULT_BASE_URL = "http://localhost:11434"
-    DEFAULT_MODEL = "llama3.1:8b"
+    DEFAULT_MODEL = "llama3.2:3b"
     DEFAULT_OPEN_TIMEOUT = 5
     DEFAULT_READ_TIMEOUT = 90
 
@@ -81,7 +81,7 @@ module AgentLoop
             next if line.blank?
 
             unless capture_token.call(line)
-              buffer = ([line] + lines[(index + 1)..]).join("\n") + "\n" + buffer
+              buffer = ([ line ] + lines[(index + 1)..]).join("\n") + "\n" + buffer
               break
             end
           end

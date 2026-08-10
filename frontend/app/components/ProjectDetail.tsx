@@ -18,6 +18,8 @@ import ErrorNotice from "./atoms/ErrorNotice";
 import ProjectModal from "./molecules/ProjectModal";
 import { ProjectPageFrame } from "./ProjectDirectory";
 
+const MODEL_OPTIONS = ["llama3.2:3b", "llama3.1:8b"];
+
 export default function ProjectDetail() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -28,6 +30,7 @@ export default function ProjectDetail() {
   const [loading, setLoading] = useState(true);
   const [project, setProject] = useState<AgentProject | null>(null);
   const [saving, setSaving] = useState(false);
+  const [selectedModel, setSelectedModel] = useState(MODEL_OPTIONS[0]);
   const [starting, setStarting] = useState(false);
   const [taskMessage, setTaskMessage] = useState("");
 
@@ -84,7 +87,7 @@ export default function ProjectDetail() {
         customer_name: project.customer_name ?? undefined,
         agent_project_id: project.id,
       });
-      await sendConversationMessage(created.id, taskMessage.trim());
+      await sendConversationMessage(created.id, taskMessage.trim(), selectedModel);
       router.push(`/chat/${created.id}`);
     } catch {
       setError("Không tạo được task trong project. Kiểm tra Rails API.");
@@ -149,11 +152,9 @@ export default function ProjectDetail() {
                     <Select
                       size="small"
                       bordered={false}
-                      defaultValue="llama3.1:8b"
-                      options={[
-                        { label: "llama3.1:8b", value: "llama3.1:8b" },
-                        { label: "Low", value: "low" },
-                      ]}
+                      value={selectedModel}
+                      options={MODEL_OPTIONS.map((model) => ({ label: model, value: model }))}
+                      onChange={setSelectedModel}
                     />
                     <Button type="text" icon={<AudioOutlined />} />
                     <Button type="primary" loading={starting} disabled={!taskMessage.trim()} onClick={handleStartTask}>

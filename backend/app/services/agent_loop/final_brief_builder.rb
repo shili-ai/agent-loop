@@ -14,6 +14,7 @@ module AgentLoop
         customer: conversation[:customer_name],
         industry: conversation[:industry],
         project: project,
+        working_notes: working_notes,
         evidence: evidence,
         web_evidence: web_evidence,
         draft: draft,
@@ -30,6 +31,17 @@ module AgentLoop
           type: document[:type],
           snippet: document[:snippet]
         }
+      end
+    end
+
+    def working_notes
+      Array(@tool_result[:working_notes]).map do |note|
+        {
+          action: note[:action] || note["action"],
+          summary: note[:summary] || note["summary"],
+          evidence_count: note[:evidence_count] || note["evidence_count"],
+          titles: note[:titles] || note["titles"]
+        }.compact
       end
     end
 
@@ -67,7 +79,7 @@ module AgentLoop
       return [] if clarified?
       return [] if @user_message.split.length >= 8
 
-      ["tên sản phẩm", "loại khách hàng", "output mong muốn"]
+      [ "tên sản phẩm", "loại khách hàng", "output mong muốn" ]
     end
 
     def clarified?

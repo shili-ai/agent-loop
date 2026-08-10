@@ -2,6 +2,7 @@
 
 import { CheckOutlined, CopyOutlined } from "@ant-design/icons";
 import { useState } from "react";
+import MermaidDiagram from "./MermaidDiagram";
 
 type CodeBlockProps = {
   code: string;
@@ -10,6 +11,11 @@ type CodeBlockProps = {
 
 export default function CodeBlock({ code, language }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
+  const normalizedLanguage = language?.toLowerCase();
+
+  if (normalizedLanguage === "mermaid") {
+    return <MermaidDiagram chart={code} />;
+  }
 
   async function handleCopy() {
     try {
