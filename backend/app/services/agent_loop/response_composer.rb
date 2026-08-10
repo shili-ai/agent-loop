@@ -9,6 +9,7 @@ module AgentLoop
     end
 
     def call
+      return no_reliable_web_answer if no_reliable_web_evidence?
       return model_answer_with_web_sources if @model_answer.present?
       return clarification_answer if @clarification.present?
 
@@ -37,6 +38,20 @@ module AgentLoop
     end
 
     private
+
+    def no_reliable_web_evidence?
+      @intent == "web_search" && web_results.blank? && web_search_attempted?
+    end
+
+    def web_search_attempted?
+      Array(@tool_result[:working_notes]).any? do |note|
+        (note[:action] || note["action"]).to_s == "web_search"
+      end
+    end
+
+    def no_reliable_web_answer
+      "Mình chưa tìm thấy nguồn web chính thống/đáng tin phù hợp cho yêu cầu này sau khi lọc kết quả kém chất lượng, nên mình không kết luận hoặc gắn nguồn thay thế. Bạn có thể gửi thêm tên công ty, quốc gia, ảnh chụp, hoặc nguồn gốc bạn thấy `#{@user_message}` để mình tìm hẹp hơn."
+    end
 
     def model_answer_with_web_sources
       answer = sanitize_unverified_links(@model_answer.to_s.strip)

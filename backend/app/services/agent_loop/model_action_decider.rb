@@ -34,7 +34,9 @@ module AgentLoop
         guard_completed_artifact(
           guard_repeated_web_search(
             guard_repeated_search(
-              guard_prefer_web_search(decide)
+              guard_stop_after_empty_web_search(
+                guard_prefer_web_search(decide)
+              )
             )
           )
         )
@@ -79,6 +81,18 @@ module AgentLoop
       build(
         "web_search",
         "Yêu cầu cần thông tin ngoài web; dùng web_search thay vì search_documents nội bộ.",
+        source: "guard"
+      )
+    end
+
+    def guard_stop_after_empty_web_search(decision)
+      return decision unless @intent == "web_search"
+      return decision unless web_attempts.positive? && web_results.empty?
+      return decision if decision[:action] == "final_answer"
+
+      build(
+        "final_answer",
+        "Đã thử tìm web nhưng không có nguồn đáng tin phù hợp; không chuyển sang tài liệu nội bộ/dummy cho yêu cầu web.",
         source: "guard"
       )
     end

@@ -13,6 +13,7 @@ module AgentLoop
       return decision("final_answer", "Đã chạm giới hạn vòng lặp an toàn.") if @iteration >= @max_iterations
       return decision("web_search", "Yêu cầu cần thông tin trên web.") if should_search_web?
       return decision("final_answer", "Đã có kết quả web để tổng hợp.") if @intent == "web_search" && web_results.present?
+      return decision("final_answer", "Đã thử tìm web nhưng không có nguồn đáng tin phù hợp.") if empty_web_search_done?
       return decision("search_documents", "Cần bằng chứng trước khi soạn nội dung.") if documents.empty?
       return decision("ask_clarification", "Yêu cầu còn ngắn, nên hỏi thêm ngữ cảnh.") if should_ask_clarification?
       return decision("draft_artifact", "Đã có tài liệu, cần tạo bản nháp để tổng hợp.") if should_draft?
@@ -42,6 +43,10 @@ module AgentLoop
       return false if web_results.present? || @state[:web_attempts].to_i.positive?
 
       @intent == "web_search" || @message.downcase.match?(/web|internet|online|google|tin mới|mới nhất|hiện nay|thị trường|đối thủ|website/)
+    end
+
+    def empty_web_search_done?
+      @intent == "web_search" && @state[:web_attempts].to_i.positive? && web_results.blank?
     end
 
     def should_draft?
