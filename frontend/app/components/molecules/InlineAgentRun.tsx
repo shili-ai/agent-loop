@@ -118,22 +118,11 @@ function answerFromRun(run?: AgentRun) {
   return typeof output === "string" ? output : undefined;
 }
 
-// A single, natural-language "thought" for each step — no structured dumps in the trace.
+// A single, natural-language "thought" for each step — the backend now emits a
+// detailed sentence per step, so the trace just shows it (no structured dumps).
 function reasoningText(step: AgentStep): string {
   const data = step.data ?? {};
-
-  if (step.kind === "decision" && typeof data.reason === "string" && data.reason.trim()) {
-    return data.reason.trim();
-  }
-  if (step.kind === "evaluation" && typeof data.done === "boolean") {
-    return data.done
-      ? "Mình thấy đã đủ dữ liệu, chuyển sang tổng hợp câu trả lời."
-      : "Chưa đủ dữ liệu, mình tiếp tục thu thập thêm.";
-  }
-  if (step.kind === "error" && data.error) {
-    return String(data.error);
-  }
-
+  if (step.kind === "error" && data.error) return String(data.error);
   return step.summary || "";
 }
 

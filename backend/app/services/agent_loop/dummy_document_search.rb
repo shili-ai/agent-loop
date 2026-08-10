@@ -32,7 +32,13 @@ module AgentLoop
     end
 
     def call
-      []
+      keywords = @query.scan(/[\p{L}\p{N}]+/).select { |word| word.length >= 4 }.uniq
+      matches = DOCUMENTS.select do |document|
+        haystack = "#{document[:title]} #{document[:type]} #{document[:snippet]}".downcase
+        keywords.any? { |keyword| haystack.include?(keyword) }
+      end
+
+      (matches.presence || DOCUMENTS.first(3)).map { |document| document.dup }
     end
   end
 end

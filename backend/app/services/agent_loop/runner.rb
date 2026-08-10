@@ -34,7 +34,7 @@ module AgentLoop
         run,
         "context",
         "Đọc ngữ cảnh chat",
-        "Đã tải lịch sử hội thoại gần đây và metadata khách hàng.",
+        context_summary(context),
         context.merge(output: ContextNoteBuilder.new(context: context).call)
       )
 
@@ -44,12 +44,19 @@ module AgentLoop
         run,
         "reasoning",
         "Phân loại ý định",
-        "Đã xác định ý định: #{intent}.",
+        "Người dùng nhắn: “#{truncate(request_content)}”. Mình hiểu đây là yêu cầu #{humanize_intent(intent)}, nên sẽ xử lý theo hướng đó.",
         { intent: intent, output: IntentNoteBuilder.new(intent: intent, message: request_content).call }
       )
 
       plan = LoopPlanBuilder.new(intent: intent, message: request_content).call
-      create_step(run, "plan", "Lập plan", "Đã tạo plan ngắn cho agent loop.", plan)
+      plan_actions = Array(plan[:actions]).map { |action| humanize_action(action) }.join(" → ")
+      create_step(
+        run,
+        "plan",
+        "Lập plan",
+        "Mình dự định lần lượt: #{plan_actions}. Mục tiêu: #{plan[:goal]}",
+        plan
+      )
 
       state = {
         documents: [],
@@ -77,7 +84,7 @@ module AgentLoop
         run,
         "answer",
         "Tổng hợp câu trả lời",
-        "Đã lưu câu trả lời cuối cho giao diện chat.",
+        "Mình tổng hợp lại ngữ cảnh, tài liệu và bản nháp thành câu trả lời hoàn chỉnh cho bạn.",
         { message_id: assistant_message.id, output: answer }
       )
       create_step(
@@ -130,7 +137,7 @@ module AgentLoop
           run,
           "decision",
           "Chọn action tiếp theo",
-          "Vòng #{iteration}: #{decision[:source] == 'model' ? 'model' : 'agent'} chọn #{decision[:action]}.",
+          decision_summary(decision, iteration),
           decision.merge(iteration: iteration)
         )
 
@@ -155,36 +162,52 @@ module AgentLoop
     def execute_action(run, intent, state, action, message)
       case action
       when "search_documents"
+        keywords = search_keywords(message)
         documents = DummyDocumentSearch.new(query: message).call
         state[:documents] = documents
         state[:search_attempts] = state[:search_attempts].to_i + 1
+        summary =
+          if documents.any?
+            "Mình tra kho tài liệu nội bộ với từ khoá #{format_keywords(keywords)} — tìm được #{documents.count} tài liệu: #{titles_of(documents)}."
+          else
+            "Mình tra kho tài liệu nội bộ với từ khoá #{format_keywords(keywords)} nhưng chưa thấy tài liệu nào khớp."
+          end
         create_step(
           run,
           "document_search",
           "Tìm tài liệu",
-          "Đã tìm thấy #{documents.count} tài liệu demo liên quan.",
-          { tools: ["document_search"], documents: documents, output: DocumentSearchNoteBuilder.new(documents: documents).call }
+          summary,
+          { tools: ["document_search"], query: message, keywords: keywords, documents: documents, output: DocumentSearchNoteBuilder.new(documents: documents).call }
         )
       when "web_search"
+        keywords = search_keywords(message)
         results = WebSearch.new(query: message).call
         state[:web_results] = results
         state[:web_attempts] = state[:web_attempts].to_i + 1
+        summary =
+          if results.any?
+            "Mình tra cứu trên web với từ khoá #{format_keywords(keywords)} — nhận về #{results.count} kết quả: #{titles_of(results)}."
+          else
+            "Mình tra cứu web với từ khoá #{format_keywords(keywords)} nhưng chưa thấy kết quả phù hợp."
+          end
         create_step(
           run,
           "web_search",
           "Tìm trên web",
-          "Đã tìm thấy #{results.count} kết quả web.",
-          { tools: ["web_search"], web_results: results, output: WebSearchNoteBuilder.new(results: results).call }
+          summary,
+          { tools: ["web_search"], query: message, keywords: keywords, web_results: results, output: WebSearchNoteBuilder.new(results: results).call }
         )
       when "draft_artifact"
         artifact_result = ArtifactBuilder.new(intent: intent, documents: state[:documents]).call
         state[:artifact] = artifact_result[:artifact]
         state[:artifact_tool] = artifact_result[:tool]
+        bullets = Array(artifact_result[:artifact][:bullets])
+        evidence = state[:documents].to_a.count
         create_step(
           run,
           "artifact",
           "Soạn bản nháp",
-          "Đã chuẩn bị #{artifact_result[:artifact][:title]} từ các bằng chứng tìm được.",
+          "Dựa trên #{evidence} tài liệu tìm được, mình phác thảo bản nháp “#{artifact_result[:artifact][:title]}”#{bullets.any? ? " gồm #{bullets.count} ý chính" : ""}.",
           {
             tools: [artifact_result[:tool]],
             artifact: artifact_result[:artifact],
@@ -194,11 +217,12 @@ module AgentLoop
       when "ask_clarification"
         clarification = ClarificationBuilder.new(message: message).call
         state[:clarification] = clarification
+        question_count = Array(clarification[:questions]).count
         create_step(
           run,
           "clarification",
           "Hỏi làm rõ",
-          "Yêu cầu còn thiếu ngữ cảnh, agent chuẩn bị câu hỏi làm rõ.",
+          "Yêu cầu còn thiếu thông tin để trả lời chính xác, nên mình chuẩn bị #{question_count} câu hỏi để làm rõ trước khi tiếp tục.",
           clarification
         )
       end
@@ -236,7 +260,7 @@ module AgentLoop
         run,
         "llm",
         "Gọi model local",
-        "Đang gọi #{generator.client.model} qua Ollama.",
+        "Mình gọi model #{generator.client.model} (qua Ollama) để tự soạn nội dung câu trả lời dựa trên brief đã chuẩn bị.",
         {
           provider: "ollama",
           model: generator.client.model,
@@ -247,8 +271,9 @@ module AgentLoop
       )
       result = generator.call_with_metrics
       answer = result[:content]
+      duration = format_duration(result.dig(:metrics, :total_duration_ms))
       step.update!(
-        summary: "Đã tạo câu trả lời bằng #{generator.client.model}.",
+        summary: "Model #{generator.client.model} đã soạn xong nội dung câu trả lời#{duration ? " (mất #{duration})" : ""}.",
         data: result[:metrics].merge(output: answer, status: "completed")
       )
       answer
@@ -290,6 +315,75 @@ module AgentLoop
         return content
       end
       nil
+    end
+
+    def context_summary(context)
+      bits = ["#{Array(context[:recent_messages]).size} tin nhắn gần đây"]
+      customer = context.dig(:conversation, :customer_name)
+      industry = context.dig(:conversation, :industry)
+      project = context.dig(:project, :title)
+      bits << "khách hàng #{customer}" if customer.present?
+      bits << "ngành #{industry}" if industry.present?
+      bits << "context của project “#{project}”" if project.present?
+      "Mình xem lại #{bits.join(", ")} để giữ mạch và trả lời sát ngữ cảnh."
+    end
+
+    def decision_summary(decision, iteration)
+      action = humanize_action(decision[:action])
+      who = decision[:source] == "model" ? "mình" : "agent"
+      base = "Ở vòng #{iteration}, #{who} quyết định #{action}"
+      reason = decision[:reason].to_s.strip
+      reason.present? ? "#{base} vì #{reason.downcase}." : "#{base}."
+    end
+
+    def humanize_intent(intent)
+      case intent
+      when "proposal" then "lập proposal / báo giá"
+      when "battlecard" then "làm battlecard"
+      when "follow_up" then "soạn email follow-up"
+      when "rfp_answer" then "trả lời RFP/RFI"
+      when "document_search" then "tìm và tóm tắt tài liệu"
+      else "tư vấn presales tổng quát"
+      end
+    end
+
+    def humanize_action(action)
+      case action
+      when "search_documents" then "tìm tài liệu nội bộ"
+      when "web_search" then "tra cứu trên web"
+      when "draft_artifact" then "soạn bản nháp"
+      when "ask_clarification" then "hỏi làm rõ khi thiếu thông tin"
+      when "final_answer" then "tổng hợp câu trả lời"
+      else action.to_s
+      end
+    end
+
+    def search_keywords(message)
+      message.to_s.downcase.scan(/[\p{L}\p{N}]+/).select { |word| word.length >= 4 }.uniq.first(6)
+    end
+
+    def format_keywords(keywords)
+      return "trong yêu cầu" if keywords.blank?
+
+      "“#{keywords.join(", ")}”"
+    end
+
+    def titles_of(items, limit = 3)
+      names = Array(items).map { |item| item[:title] || item["title"] }.compact
+      shown = names.first(limit).join(", ")
+      names.length > limit ? "#{shown}…" : shown
+    end
+
+    def truncate(text, limit = 140)
+      text = text.to_s.strip.gsub(/\s+/, " ")
+      text.length > limit ? "#{text[0, limit]}…" : text
+    end
+
+    def format_duration(ms)
+      value = ms.is_a?(Numeric) ? ms : nil
+      return nil unless value
+
+      value < 1000 ? "#{value} ms" : "#{(value / 1000.0).round(1)} s"
     end
 
     def create_step(run, kind, title, summary, data)
