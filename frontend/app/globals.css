@@ -813,6 +813,54 @@ body {
   font-size: 12.5px;
 }
 
+.step-result-preview {
+  display: grid;
+  gap: 8px;
+  margin-top: 7px;
+  max-width: 720px;
+}
+
+.step-result-group {
+  border-left: 2px solid #e5e7eb;
+  padding-left: 10px;
+}
+
+.step-result-title {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.step-result-list {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-left: 16px;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.step-result-name {
+  color: #334155;
+  font-weight: 600;
+}
+
+.step-result-empty {
+  border-left: 2px solid #e5e7eb;
+  color: #7c8797;
+  font-size: 12px;
+  line-height: 1.45;
+  padding-left: 10px;
+}
+
+.step-result-reason,
+.step-result-url {
+  color: #7c8797;
+  overflow-wrap: anywhere;
+}
+
 .assistant-activity.compact {
   border-color: #edf1f4;
   background: #ffffff;

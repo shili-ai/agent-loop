@@ -244,12 +244,17 @@ module AgentLoop
         )
       when "web_search"
         keywords = search_keywords(message)
-        results = WebSearch.new(query: message).call
+        searcher = WebSearch.new(query: message)
+        results = searcher.call
+        candidates = searcher.candidates
+        raw_results = searcher.raw_results
         state[:web_results] = results
         state[:web_attempts] = state[:web_attempts].to_i + 1
         summary =
           if results.any?
             "Mình tra cứu trên web với từ khoá #{format_keywords(keywords)} — nhận về #{results.count} kết quả: #{titles_of(results)}."
+          elsif candidates.any?
+            "Mình tra cứu web với từ khoá #{format_keywords(keywords)} — thấy #{candidates.count} ứng viên nhưng chưa có kết quả đủ khớp/đáng tin: #{titles_of(candidates)}."
           else
             "Mình tra cứu web với từ khoá #{format_keywords(keywords)} nhưng chưa thấy kết quả phù hợp."
           end
@@ -258,15 +263,26 @@ module AgentLoop
           action: "web_search",
           summary: results.any? ? "Tìm được #{results.count} nguồn web phù hợp: #{titles_of(results)}." : "Không tìm thấy nguồn web phù hợp sau khi lọc nguồn kém/chưa chính thống.",
           evidence_count: results.count,
+          candidate_count: candidates.count,
+          raw_count: raw_results.count,
           keywords: keywords,
-          titles: results.map { |result| result[:title] }
+          titles: results.map { |result| result[:title] },
+          candidate_titles: candidates.map { |candidate| candidate[:title] }
         )
         create_step(
           run,
           "web_search",
           "Tìm trên web",
           summary,
-          { tools: [ "web_search" ], query: message, keywords: keywords, web_results: results, output: WebSearchNoteBuilder.new(results: results).call }
+          {
+            tools: [ "web_search" ],
+            query: message,
+            keywords: keywords,
+            web_raw_results: raw_results,
+            web_results: results,
+            web_candidates: candidates,
+            output: WebSearchNoteBuilder.new(results: results, candidates: candidates, raw_results: raw_results).call
+          }
         )
       when "draft_artifact"
         artifact_result = ArtifactBuilder.new(intent: intent, documents: state[:documents]).call

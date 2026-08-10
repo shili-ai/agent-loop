@@ -50,7 +50,22 @@ module AgentLoop
     end
 
     def no_reliable_web_answer
-      "Mình chưa tìm thấy nguồn web chính thống/đáng tin phù hợp cho yêu cầu này sau khi lọc kết quả kém chất lượng, nên mình không kết luận hoặc gắn nguồn thay thế. Bạn có thể gửi thêm tên công ty, quốc gia, ảnh chụp, hoặc nguồn gốc bạn thấy `#{@user_message}` để mình tìm hẹp hơn."
+      candidate_text =
+        if web_candidate_titles.any?
+          " Mình có thấy một số ứng viên như #{web_candidate_titles.first(5).join(', ')}, nhưng chúng chưa đủ khớp hoặc chưa đủ đáng tin để dùng làm bằng chứng."
+        else
+          ""
+        end
+
+      "Mình chưa tìm thấy nguồn web chính thống/đáng tin phù hợp cho yêu cầu này sau khi lọc kết quả kém chất lượng, nên mình không kết luận hoặc gắn nguồn thay thế.#{candidate_text} Bạn có thể gửi thêm tên công ty, quốc gia, ảnh chụp, hoặc nguồn gốc bạn thấy `#{@user_message}` để mình tìm hẹp hơn."
+    end
+
+    def web_candidate_titles
+      @web_candidate_titles ||= Array(@tool_result[:working_notes]).flat_map do |note|
+        next [] unless (note[:action] || note["action"]).to_s == "web_search"
+
+        note[:candidate_titles] || note["candidate_titles"] || []
+      end.compact.uniq
     end
 
     def model_answer_with_web_sources

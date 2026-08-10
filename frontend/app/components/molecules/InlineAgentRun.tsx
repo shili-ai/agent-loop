@@ -98,8 +98,56 @@ function StepActivity({ step }: { step: AgentStep }) {
           </button>
         </div>
         {text ? <div className="reason-text">{text}</div> : null}
+        <StepResultPreview step={step} />
         {showDetail ? <StepIoPanel step={step} /> : null}
       </div>
+    </div>
+  );
+}
+
+function StepResultPreview({ step }: { step: AgentStep }) {
+  if (step.kind === "web_search") {
+    const rawResults = asRecords(step.data.web_raw_results);
+    const results = asRecords(step.data.web_results);
+
+    return (
+      <div className="step-result-preview">
+        {rawResults.length ? <StepResultGroup items={rawResults} title="Link tìm được" /> : null}
+        {results.length ? <StepResultGroup items={results} title="Kết quả đạt chuẩn" /> : null}
+        {!rawResults.length && !results.length ? (
+          <div className="step-result-empty">Search provider chưa trả về kết quả phù hợp để hiển thị.</div>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (step.kind === "document_search") {
+    const documents = asRecords(step.data.documents);
+    if (!documents.length) return null;
+
+    return (
+      <div className="step-result-preview">
+        <StepResultGroup items={documents} title="Tài liệu tìm được" />
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function StepResultGroup({ items, title }: { items: Record<string, unknown>[]; title: string }) {
+  return (
+    <div className="step-result-group">
+      <div className="step-result-title">{title}</div>
+      <ul className="step-result-list">
+        {items.slice(0, 5).map((item, index) => (
+          <li key={`${asText(item.title) || asText(item.url) || index}-${index}`}>
+            <span className="step-result-name">{asText(item.title) || asText(item.url) || "Không có tiêu đề"}</span>
+            {asText(item.reason) ? <span className="step-result-reason"> · {asText(item.reason)}</span> : null}
+            {asText(item.url) ? <span className="step-result-url"> · {asText(item.url)}</span> : null}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -343,6 +391,14 @@ function stepOutput(step: AgentStep): { content: string } | null {
 function formatMs(value: unknown) {
   if (typeof value !== "number") return value;
   return value < 1000 ? `${value} ms` : `${(value / 1000).toFixed(1)} s`;
+}
+
+function asRecords(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object") : [];
+}
+
+function asText(value: unknown): string {
+  return typeof value === "string" ? value : "";
 }
 
 function artifactTitle(artifact: unknown) {

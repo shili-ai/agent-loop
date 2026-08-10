@@ -40,7 +40,8 @@ module AgentLoop
           action: note[:action] || note["action"],
           summary: note[:summary] || note["summary"],
           evidence_count: note[:evidence_count] || note["evidence_count"],
-          titles: note[:titles] || note["titles"]
+          titles: note[:titles] || note["titles"],
+          candidate_titles: note[:candidate_titles] || note["candidate_titles"]
         }.compact
       end
     end
