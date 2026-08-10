@@ -54,7 +54,6 @@ export default function ChatComposer({
           <ArrowUpOutlined spin={sending} />
         </button>
       </form>
-      <p className="composer-hint">Trợ lý có thể mắc lỗi. Hãy kiểm tra các thông tin quan trọng.</p>
     </div>
   );
 }

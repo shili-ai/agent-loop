@@ -10,13 +10,12 @@ import {
   RobotOutlined,
   ToolOutlined,
 } from "@ant-design/icons";
-import { Button, Collapse, List, Space, Tag, Typography } from "antd";
+import { Collapse, List, Space, Typography } from "antd";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import type { AgentMessage, AgentRun, AgentStep } from "../../types/agent";
 import MarkdownContent from "../atoms/MarkdownContent";
 import MessageActions from "../atoms/MessageActions";
-import MermaidDiagram from "../atoms/MermaidDiagram";
 
 type InlineAgentRunProps = {
   finalAnswer?: AgentMessage;
@@ -26,7 +25,6 @@ type InlineAgentRunProps = {
 
 export default function InlineAgentRun({ finalAnswer, pending = false, run }: InlineAgentRunProps) {
   const steps = run?.steps ?? [];
-  const flowStep = steps.find((step) => step.kind === "flow");
   const visibleSteps = steps.filter((step) => step.kind !== "flow");
   const running = pending || run?.status === "running";
   const [expanded, setExpanded] = useState(false);
@@ -50,72 +48,61 @@ export default function InlineAgentRun({ finalAnswer, pending = false, run }: In
 
         {showSteps ? (
           <div className="run-steps">
-            {visibleSteps.map((step, index) => <StepActivity key={step.id} index={index} step={step} />)}
-            {running ? <PendingActivity hasSteps={visibleSteps.length > 0} /> : null}
+            {visibleSteps.map((step) => <StepActivity key={step.id} step={step} />)}
+            {running ? <PendingActivity /> : null}
           </div>
         ) : null}
 
         {!running ? <FinalAnswer message={finalAnswer} run={run} /> : null}
-        {!running && flowStep ? <FlowDiagramStep step={flowStep} /> : null}
       </Space>
     </div>
   );
 }
 
 function runLabel(run: AgentRun | undefined, running: boolean, stepCount: number) {
-  if (running) return stepCount ? `Đang xử lý... đã xong ${stepCount} bước` : "Đang xử lý...";
-  if (run?.status === "failed") return `Đã dừng sau ${stepCount} bước`;
-  if (run) return stepCount ? `Đã xử lý qua ${stepCount} bước` : "Đã xử lý";
-  return "Đã xử lý";
+  if (running) return stepCount ? `Đang suy luận… (${stepCount} bước)` : "Đang suy luận…";
+  if (run?.status === "failed") return `Đã dừng sau ${stepCount} bước suy luận`;
+  if (run) return stepCount ? `Đã suy luận qua ${stepCount} bước` : "Đã suy luận";
+  return "Đã suy luận";
 }
 
-function PendingActivity({ hasSteps }: { hasSteps: boolean }) {
+function PendingActivity() {
   return (
-    <div className="agent-step-line pending">
-      <div className="agent-step-header">
-        <span className="agent-step-icon">
-          <LoadingOutlined />
-        </span>
-        <div className="agent-step-heading">
-          <Typography.Text strong>{hasSteps ? "Đang xử lý tiếp" : "Đang chạy agent loop"}</Typography.Text>
-          <Typography.Text type="secondary">Realtime</Typography.Text>
+    <div className="reason-step pending">
+      <span className="reason-icon">
+        <LoadingOutlined />
+      </span>
+      <div className="reason-content">
+        <div className="reason-head">
+          <span className="reason-label">Đang suy luận…</span>
         </div>
+        <div className="reason-text">Model đang phân tích và lập luận để tìm hướng trả lời.</div>
       </div>
-      <Typography.Paragraph className="codex-step-body">
-        Agent đang xử lý và sẽ tự cập nhật ngay khi có kết quả mới.
-      </Typography.Paragraph>
     </div>
   );
 }
 
-function StepActivity({ index, step }: { index: number; step: AgentStep }) {
+function StepActivity({ step }: { step: AgentStep }) {
   const [showIo, setShowIo] = useState(false);
   const output = normalizeOutput(step);
   const tone = stepTone(step);
   const details = stepDetails(step);
 
   return (
-    <div className={`agent-step-line ${tone}`}>
-      <div className="agent-step-header">
-        <span className="agent-step-icon">{stepIcon(step)}</span>
-        <div className="agent-step-heading">
-          <Space size={6} wrap>
-            <Tag className="step-index">Bước {index + 1}</Tag>
-            <Tag className={`step-kind ${tone}`}>{stepKindLabel(step)}</Tag>
-            {usesModel(step) && step.kind !== "llm" ? <Tag className="step-kind model">AI model</Tag> : null}
-            <Typography.Text strong>{stepLabel(step)}</Typography.Text>
-            <Button size="small" type="link" className="step-io-button" onClick={() => setShowIo(!showIo)}>
-              I/O
-            </Button>
-          </Space>
-          {details ? <Typography.Text className="step-detail italic">{details}</Typography.Text> : null}
-          <Typography.Text type="secondary" className="step-summary">
-            {step.summary}
-          </Typography.Text>
+    <div className={`reason-step ${tone}`}>
+      <span className="reason-icon">{stepIcon(step)}</span>
+      <div className="reason-content">
+        <div className="reason-head">
+          <span className="reason-label">{stepLabel(step)}</span>
+          <button type="button" className="reason-io" onClick={() => setShowIo((value) => !value)}>
+            {showIo ? "Ẩn I/O" : "I/O"}
+          </button>
         </div>
+        {details ? <div className="reason-note">{details}</div> : null}
+        {step.summary ? <div className="reason-text">{step.summary}</div> : null}
+        {output ? <div className="reason-output">{output}</div> : null}
+        {showIo ? <StepIoPanel step={step} /> : null}
       </div>
-      {output ? <div className="codex-step-output">{output}</div> : null}
-      {showIo ? <StepIoPanel step={step} /> : null}
     </div>
   );
 }
@@ -129,25 +116,6 @@ function FinalAnswer({ message, run }: { message?: AgentMessage; run?: AgentRun 
       <MarkdownContent className="markdown-content codex-final-answer">{answer}</MarkdownContent>
       <MessageActions content={answer} />
     </section>
-  );
-}
-
-function FlowDiagramStep({ step }: { step: AgentStep }) {
-  const [showDiagram, setShowDiagram] = useState(false);
-  const diagram = step.data.diagram;
-
-  return (
-    <div className="agent-flow-section">
-      <Space direction="vertical" size={10} className="full-width">
-        <Button size="small" onClick={() => setShowDiagram((current) => !current)}>
-          {showDiagram ? "Ẩn sơ đồ luồng" : "Xem sơ đồ luồng"}
-        </Button>
-        {showDiagram && typeof step.data.output === "string" ? (
-          <MarkdownContent className="markdown-content step-output-text">{step.data.output}</MarkdownContent>
-        ) : null}
-        {showDiagram && typeof diagram === "string" ? <MermaidDiagram chart={diagram} /> : null}
-      </Space>
-    </div>
   );
 }
 
@@ -264,36 +232,20 @@ function stepIcon(step: AgentStep) {
 }
 
 function stepLabel(step: AgentStep) {
-  if (step.kind === "context") return "Đọc ngữ cảnh";
-  if (step.kind === "plan") return "Lập plan";
+  if (step.kind === "context") return "Xem lại ngữ cảnh cuộc trò chuyện";
+  if (step.kind === "plan") return "Phác thảo hướng tiếp cận";
   if (step.kind === "reasoning") return "Phân tích yêu cầu";
-  if (step.kind === "decision") return "Chọn action";
-  if (step.kind === "evaluation") return "Đánh giá tiến độ";
-  if (step.kind === "document_search") return "Tìm tài liệu";
-  if (step.kind === "web_search") return "Tìm trên web";
+  if (step.kind === "decision") return "Cân nhắc bước tiếp theo";
+  if (step.kind === "evaluation") return "Tự đánh giá tiến độ";
+  if (step.kind === "document_search") return "Tìm tài liệu liên quan";
+  if (step.kind === "web_search") return "Tra cứu trên web";
   if (step.kind === "artifact") return "Soạn bản nháp";
-  if (step.kind === "clarification") return "Hỏi làm rõ";
-  if (step.kind === "tool") return "Chạy công cụ";
-  if (step.kind === "llm") return "Gọi model local";
+  if (step.kind === "clarification") return "Đặt câu hỏi làm rõ";
+  if (step.kind === "tool") return "Dùng công cụ";
+  if (step.kind === "llm") return "Suy nghĩ với model";
   if (step.kind === "answer") return "Tổng hợp câu trả lời";
-  if (step.kind === "flow") return "Vẽ sơ đồ luồng";
   if (step.kind === "error") return "Đã dừng";
   return step.title;
-}
-
-function stepKindLabel(step: AgentStep) {
-  if (["document_search", "web_search", "artifact", "tool"].includes(step.kind)) return "Tool";
-  if (step.kind === "llm") return "AI model";
-  if (step.kind === "decision") return "Decision";
-  if (step.kind === "evaluation") return "Evaluation";
-  if (step.kind === "answer") return "Final";
-  if (step.kind === "flow") return "Flow";
-  if (step.kind === "error") return "Error";
-  return "Agent";
-}
-
-function usesModel(step: AgentStep) {
-  return step.kind === "llm" || step.data.source === "model";
 }
 
 function stepTone(step: AgentStep) {

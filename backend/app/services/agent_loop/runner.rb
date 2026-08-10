@@ -71,6 +71,7 @@ module AgentLoop
         clarification: state[:clarification]
       ).call
       assistant_message = @conversation.agent_messages.create!(role: "assistant", content: answer)
+      maybe_generate_title(assistant_message)
       run.update!(assistant_message: assistant_message, status: "completed")
       create_step(
         run,
@@ -102,6 +103,16 @@ module AgentLoop
     end
 
     private
+
+    def maybe_generate_title(assistant_message)
+      return unless @conversation.needs_generated_title?
+      return unless @conversation.agent_runs.count <= 1
+
+      title = ConversationTitler.new(conversation: @conversation, latest_answer: assistant_message.content).call
+      @conversation.update!(title: title) if title.present?
+    rescue StandardError => e
+      Rails.logger.warn("[AgentLoop::Runner] title generation failed: #{e.class}: #{e.message}")
+    end
 
     def run_dynamic_loop(run, intent, state, plan, message, context)
       MAX_ITERATIONS.times do |index|

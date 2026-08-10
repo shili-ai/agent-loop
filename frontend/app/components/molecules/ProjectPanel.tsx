@@ -61,6 +61,9 @@ export default function ProjectPanel({
                       <Typography.Text ellipsis className="project-chat-tree-title">
                         {conversation.title}
                       </Typography.Text>
+                      {relativeTime(conversation.updated_at) ? (
+                        <span className="project-chat-tree-time">{relativeTime(conversation.updated_at)}</span>
+                      ) : null}
                     </div>
                   ))
                 ) : (
@@ -75,4 +78,25 @@ export default function ProjectPanel({
       </div>
     </section>
   );
+}
+
+function relativeTime(iso?: string) {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+
+  const diffMinutes = Math.floor((Date.now() - then) / 60000);
+  if (diffMinutes < 1) return "vừa xong";
+  if (diffMinutes < 60) return `${diffMinutes} phút`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} giờ`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 30) return `${diffDays} ngày`;
+
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths < 12) return `${diffMonths} tháng`;
+
+  return `${Math.floor(diffMonths / 12)} năm`;
 }

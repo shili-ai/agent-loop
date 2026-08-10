@@ -15,7 +15,9 @@ module Api
     end
 
     def create
-      conversation = AgentConversation.create!(conversation_params)
+      attributes = conversation_params.to_h
+      attributes[:title] = AgentConversation::DEFAULT_TITLE if attributes[:title].blank?
+      conversation = AgentConversation.create!(attributes)
 
       render json: AgentConversationSerializer.new(conversation).as_json, status: :created
     end

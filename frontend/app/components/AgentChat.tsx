@@ -1,10 +1,11 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createConversation,
   createProject,
+  deleteConversation,
   getConversation,
   listConversations,
   listProjects,
@@ -15,27 +16,36 @@ import type {
   AgentConversation,
   AgentConversationSummary,
   AgentProject,
-  NewConversationInput,
   NewProjectInput,
 } from "../types/agent";
 import ErrorNotice from "./atoms/ErrorNotice";
-import NewConversationModal from "./molecules/NewConversationModal";
 import ProjectModal from "./molecules/ProjectModal";
 import AgentChatPanel from "./organisms/AgentChatPanel";
 import AgentSidebar from "./organisms/AgentSidebar";
 import AgentChatTemplate from "./templates/AgentChatTemplate";
 
+function conversationIdFromPath(pathname: string): number | null {
+  const match = /^\/chat\/(\d+)/.exec(pathname);
+  return match ? Number(match[1]) : null;
+}
+
 export default function AgentChat() {
   const router = useRouter();
+  const pathname = usePathname();
+  const routeConversationId = useMemo(() => conversationIdFromPath(pathname), [pathname]);
+
   const optimisticMessageId = useRef(-1);
+  const projectsRef = useRef<AgentProject[]>([]);
+  const loadedKeyRef = useRef<number | "draft" | null>(null);
+
   const [activeProjectConversations, setActiveProjectConversations] = useState<AgentConversationSummary[]>([]);
   const [activeProject, setActiveProject] = useState<AgentProject | null>(null);
   const [conversation, setConversation] = useState<AgentConversation | null>(null);
+  const [draft, setDraft] = useState(false);
+  const [ready, setReady] = useState(false);
   const [sidebarConversations, setSidebarConversations] = useState<AgentConversationSummary[]>([]);
-  const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [modalOpen, setModalOpen] = useState(false);
   const [projectModalMode] = useState<"create" | "edit">("create");
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [projectSaving, setProjectSaving] = useState(false);
@@ -48,13 +58,17 @@ export default function AgentChat() {
     () => Boolean(conversation?.runs.some((run) => run.status === "running")),
     [conversation]
   );
-  const chatDisabled = loading || sending || hasRunningRun || !conversation;
+  const chatDisabled = loading || sending || hasRunningRun || (!conversation && !draft);
 
-  const refreshConversationList = useCallback(async (projectId = activeProject?.id) => {
+  useEffect(() => {
+    projectsRef.current = projects;
+  }, [projects]);
+
+  const refreshConversationList = useCallback(async (projectId?: number) => {
     const items = await listConversations(projectId);
     setActiveProjectConversations(items);
     return items;
-  }, [activeProject?.id]);
+  }, []);
 
   const refreshSidebarConversations = useCallback(async () => {
     const items = await listConversations();
@@ -62,63 +76,78 @@ export default function AgentChat() {
     return items;
   }, []);
 
-  const selectConversation = useCallback(async (id: number) => {
+  const loadConversation = useCallback(async (id: number) => {
     setLoading(true);
+    setDraft(false);
     setError(null);
 
     try {
       const selected = await getConversation(id);
       setConversation(selected);
       setMessage("");
+      const project =
+        projectsRef.current.find((item) => item.id === selected.agent_project_id) ?? selected.project ?? null;
+      if (project) setActiveProject(project);
+      await refreshConversationList(selected.agent_project_id ?? undefined);
     } catch {
-      setError("Không tải được chat. Kiểm tra Rails API.");
+      setError("Không tải được đoạn chat. Có thể đã bị xoá.");
+      loadedKeyRef.current = null;
+      router.replace("/");
     } finally {
       setLoading(false);
     }
+  }, [refreshConversationList, router]);
+
+  const applyDraft = useCallback(() => {
+    setConversation(null);
+    setDraft(true);
+    setMessage("");
+    setError(null);
+    setActiveProject((current) => current ?? projectsRef.current[0] ?? null);
+    setLoading(false);
   }, []);
 
-  const bootstrap = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const loadedProjects = await listProjects();
-      setProjects(loadedProjects);
-      const searchParams = new URLSearchParams(window.location.search);
-      const conversationIdParam = searchParams.get("conversation_id");
-      const conversationIdFromUrl = conversationIdParam ? Number(conversationIdParam) : null;
-      const shouldOpenNewChat = searchParams.get("new_chat") === "1";
-      const selectedConversation = conversationIdFromUrl && Number.isFinite(conversationIdFromUrl)
-        ? await getConversation(conversationIdFromUrl)
-        : null;
-      const selectedProject =
-        loadedProjects.find((project) => project.id === selectedConversation?.agent_project_id) ??
-        loadedProjects[0] ??
-        null;
-      setActiveProject(selectedProject);
-
-      const [items] = await Promise.all([
-        refreshConversationList(selectedProject?.id),
-        refreshSidebarConversations(),
-      ]);
-      if (selectedConversation) {
-        setConversation(selectedConversation);
-      } else if (items[0]) {
-        setConversation(await getConversation(items[0].id));
-      }
-      if (shouldOpenNewChat) setModalOpen(true);
-    } catch {
-      setError("Không kết nối được Rails API. Kiểm tra backend port và NEXT_PUBLIC_API_URL.");
-    } finally {
-      setLoading(false);
-    }
-  }, [refreshConversationList, refreshSidebarConversations]);
-
+  // Load projects + sidebar once on mount.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    bootstrap();
-  }, [bootstrap]);
+    let cancelled = false;
 
+    (async () => {
+      try {
+        const loadedProjects = await listProjects();
+        if (cancelled) return;
+        projectsRef.current = loadedProjects;
+        setProjects(loadedProjects);
+        await refreshSidebarConversations();
+      } catch {
+        if (!cancelled) setError("Không kết nối được Rails API. Kiểm tra backend port và NEXT_PUBLIC_API_URL.");
+      } finally {
+        if (!cancelled) setReady(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshSidebarConversations]);
+
+  // Keep the open conversation in sync with the URL.
+  useEffect(() => {
+    if (!ready) return;
+
+    if (routeConversationId == null) {
+      if (loadedKeyRef.current !== "draft") {
+        loadedKeyRef.current = "draft";
+        applyDraft();
+      }
+      return;
+    }
+
+    if (loadedKeyRef.current === routeConversationId) return;
+    loadedKeyRef.current = routeConversationId;
+    void loadConversation(routeConversationId);
+  }, [ready, routeConversationId, applyDraft, loadConversation]);
+
+  // Poll while a run is in progress; refresh lists when it finishes.
   useEffect(() => {
     if (!conversation || !hasRunningRun) return;
 
@@ -127,34 +156,24 @@ export default function AgentChat() {
       try {
         const updated = await getConversation(conversationId);
         setConversation((current) => (current?.id === conversationId ? updated : current));
+        if (!updated.runs.some((run) => run.status === "running")) {
+          void refreshConversationList(updated.agent_project_id ?? undefined);
+          void refreshSidebarConversations();
+        }
       } catch {
         setError("Không cập nhật được tiến trình agent realtime.");
       }
     }, 1000);
 
     return () => window.clearInterval(interval);
-  }, [conversation, hasRunningRun]);
+  }, [conversation, hasRunningRun, refreshConversationList, refreshSidebarConversations]);
 
-  async function handleCreateConversation(input: NewConversationInput) {
-    setCreating(true);
-    setError(null);
+  function openConversation(id: number) {
+    router.push(`/chat/${id}`);
+  }
 
-    try {
-      const created = await createConversation({
-        ...input,
-        agent_project_id: activeProject?.id,
-        industry: input.industry || activeProject?.industry || "Phần mềm",
-        customer_name: input.customer_name || activeProject?.customer_name || undefined,
-      });
-      setConversation(created);
-      setModalOpen(false);
-      setMessage("");
-      await Promise.all([refreshConversationList(activeProject?.id), refreshSidebarConversations()]);
-    } catch {
-      setError("Không tạo được chat mới. Kiểm tra Rails API.");
-    } finally {
-      setCreating(false);
-    }
+  function startNewChat() {
+    router.push("/");
   }
 
   async function handleProjectModalSubmit(input: NewProjectInput) {
@@ -165,13 +184,17 @@ export default function AgentChat() {
       if (projectModalMode === "create") {
         const created = await createProject(input);
         const loadedProjects = await listProjects();
+        projectsRef.current = loadedProjects;
         setProjects(loadedProjects);
         setActiveProject(created);
-        setConversation(null);
         setActiveProjectConversations([]);
         await refreshSidebarConversations();
-        setMessage("");
-      } else if (activeProject) {
+        setProjectModalOpen(false);
+        startNewChat();
+        return;
+      }
+
+      if (activeProject) {
         const updated = await updateProject(activeProject.id, input);
         setActiveProject(updated);
         setProjects((current) => current.map((project) => (project.id === updated.id ? updated : project)));
@@ -184,28 +207,65 @@ export default function AgentChat() {
     }
   }
 
-  async function handleSend(value = message) {
-    if (!conversation || !value.trim()) return;
+  async function handleDeleteConversation() {
+    if (!conversation) {
+      startNewChat();
+      return;
+    }
 
-    const optimisticUserMessage = {
-      id: optimisticMessageId.current--,
-      role: "user" as const,
-      content: value.trim(),
-      created_at: "",
-    };
+    const deletedId = conversation.id;
+    setError(null);
+
+    try {
+      await deleteConversation(deletedId);
+      const [projectItems, sidebarItems] = await Promise.all([
+        refreshConversationList(activeProject?.id),
+        refreshSidebarConversations(),
+      ]);
+      const next = projectItems.find((item) => item.id !== deletedId) ?? sidebarItems.find((item) => item.id !== deletedId);
+      loadedKeyRef.current = null;
+      if (next) {
+        openConversation(next.id);
+      } else {
+        startNewChat();
+      }
+    } catch {
+      setError("Không xoá được đoạn chat. Kiểm tra Rails API.");
+    }
+  }
+
+  async function handleSend(value = message) {
+    const text = value.trim();
+    if (!text || sending || hasRunningRun) return;
 
     setSending(true);
     setError(null);
-    setConversation({
-      ...conversation,
-      messages: [...conversation.messages, optimisticUserMessage],
-    });
 
     try {
-      const updated = await sendConversationMessage(conversation.id, value.trim());
+      let active = conversation;
+      if (!active) {
+        // Draft chat: persist the conversation only now that it has real content.
+        active = await createConversation({ agent_project_id: activeProject?.id });
+        loadedKeyRef.current = active.id;
+        setDraft(false);
+        router.replace(`/chat/${active.id}`);
+      }
+
+      const optimisticUserMessage = {
+        id: optimisticMessageId.current--,
+        role: "user" as const,
+        content: text,
+        created_at: "",
+      };
+      setConversation({ ...active, messages: [...active.messages, optimisticUserMessage] });
+
+      const updated = await sendConversationMessage(active.id, text);
       setConversation(updated);
       setMessage("");
-      await Promise.all([refreshConversationList(), refreshSidebarConversations()]);
+      await Promise.all([
+        refreshConversationList(updated.agent_project_id ?? undefined),
+        refreshSidebarConversations(),
+      ]);
     } catch {
       setError("Agent loop bị lỗi khi xử lý tin nhắn. Thử lại hoặc xem log backend.");
     } finally {
@@ -224,15 +284,17 @@ export default function AgentChat() {
           conversations={sidebarConversations}
           loading={loading}
           projects={projects}
-          onCreateConversation={() => setModalOpen(true)}
+          onCreateConversation={startNewChat}
           onCreateProject={() => setProjectModalOpen(true)}
           onSelectProject={(id) => router.push(`/projects/${id}`)}
-          onSelectConversation={selectConversation}
+          onSelectConversation={openConversation}
         />
       }
       chatPanel={
         <AgentChatPanel
+          activeProject={activeProject}
           conversation={conversation}
+          draft={draft}
           disabled={chatDisabled}
           latestRun={latestRun}
           loading={loading}
@@ -241,26 +303,18 @@ export default function AgentChat() {
           onChangeMessage={setMessage}
           onSend={() => handleSend()}
           onClarify={(text) => handleSend(text)}
+          onDelete={handleDeleteConversation}
         />
       }
       newConversationModal={
-        <>
-          <NewConversationModal
-            creating={creating}
-            open={modalOpen}
-            project={activeProject}
-            onCancel={() => setModalOpen(false)}
-            onCreate={handleCreateConversation}
-          />
-          <ProjectModal
-            mode={projectModalMode}
-            open={projectModalOpen}
-            project={activeProject}
-            saving={projectSaving}
-            onCancel={() => setProjectModalOpen(false)}
-            onSubmit={handleProjectModalSubmit}
-          />
-        </>
+        <ProjectModal
+          mode={projectModalMode}
+          open={projectModalOpen}
+          project={activeProject}
+          saving={projectSaving}
+          onCancel={() => setProjectModalOpen(false)}
+          onSubmit={handleProjectModalSubmit}
+        />
       }
     />
   );

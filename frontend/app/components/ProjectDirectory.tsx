@@ -152,10 +152,10 @@ export function ProjectPageFrame({
           conversations={sidebarConversations}
           loading={sidebarLoading}
           projects={sidebarProjects}
-          onCreateConversation={() => router.push("/?new_chat=1")}
+          onCreateConversation={() => router.push("/")}
           onCreateProject={() => router.push("/projects")}
           onSelectProject={(id) => router.push(`/projects/${id}`)}
-          onSelectConversation={(id) => router.push(`/?conversation_id=${id}`)}
+          onSelectConversation={(id) => router.push(`/chat/${id}`)}
         />
         <section className="project-page">{children}</section>
       </main>

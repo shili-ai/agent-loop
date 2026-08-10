@@ -52,8 +52,8 @@ export type AgentConversationSummary = Pick<
 };
 
 export type NewConversationInput = {
-  title: string;
-  industry: string;
+  title?: string;
+  industry?: string;
   customer_name?: string;
   agent_project_id?: number;
 };

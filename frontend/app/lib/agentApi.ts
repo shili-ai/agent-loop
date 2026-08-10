@@ -59,7 +59,7 @@ export function getConversation(id: number) {
   return request<AgentConversation>(`/api/agent_conversations/${id}`);
 }
 
-export function createConversation(input: NewConversationInput) {
+export function createConversation(input: NewConversationInput = {}) {
   return request<AgentConversation>("/api/agent_conversations", {
     method: "POST",
     body: JSON.stringify({

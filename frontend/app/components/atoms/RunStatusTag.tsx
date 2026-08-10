@@ -7,6 +7,7 @@ type RunStatusTagProps = {
 
 export default function RunStatusTag({ status }: RunStatusTagProps) {
   const label = statusLabel(status);
+  if (!label) return null;
 
   return (
     <Tag icon={<ApiOutlined />} color={status === "completed" ? "success" : "processing"}>
@@ -19,5 +20,5 @@ function statusLabel(status?: string) {
   if (status === "running") return "Đang chạy";
   if (status === "completed") return "Hoàn tất";
   if (status === "failed") return "Lỗi";
-  return "Sẵn sàng";
+  return null;
 }
