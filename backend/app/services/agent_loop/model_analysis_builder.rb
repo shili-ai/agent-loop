@@ -108,9 +108,17 @@ module AgentLoop
 
     def messages
       [
-        { role: "system", content: PromptTemplate.render("analysis_system") },
+        { role: "system", content: system_prompt },
         { role: "user", content: user_prompt }
       ]
+    end
+
+    def system_prompt
+      PromptComposer.new(
+        base_system: PromptTemplate.render("analysis_system"),
+        context: @context,
+        purpose: :analysis
+      ).system_prompt
     end
 
     def user_prompt

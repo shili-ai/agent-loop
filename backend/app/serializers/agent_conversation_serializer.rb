@@ -10,7 +10,9 @@ class AgentConversationSerializer
       title: @conversation.title,
       industry: @conversation.industry,
       customer_name: @conversation.customer_name,
+      instructions: @conversation.instructions,
       project: project,
+      skills: skills,
       documents: documents,
       messages: messages,
       runs: runs
@@ -34,6 +36,10 @@ class AgentConversationSerializer
 
   def documents
     scoped_documents.map { |document| AgentDocumentSerializer.new(document).as_json }
+  end
+
+  def skills
+    AgentLoop::SkillResolver.new(conversation: @conversation).call
   end
 
   def scoped_documents

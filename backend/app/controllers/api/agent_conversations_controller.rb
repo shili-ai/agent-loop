@@ -32,7 +32,7 @@ module Api
     private
 
     def conversation_params
-      params.fetch(:agent_conversation, {}).permit(:title, :industry, :customer_name, :agent_project_id)
+      params.fetch(:agent_conversation, {}).permit(:title, :industry, :customer_name, :agent_project_id, :instructions)
     end
 
     def summary(conversation)
@@ -42,6 +42,7 @@ module Api
         title: conversation.title,
         industry: conversation.industry,
         customer_name: conversation.customer_name,
+        instructions: conversation.instructions,
         updated_at: conversation.updated_at
       }
     end

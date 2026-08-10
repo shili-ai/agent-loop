@@ -7,8 +7,9 @@ module AgentLoop
     MIN_OPTIONS = 2
     MAX_OPTIONS = 4
 
-    def initialize(message:, client: LocalModelClient.new)
+    def initialize(message:, context: {}, client: LocalModelClient.new)
       @message = message.to_s
+      @context = context
       @client = client
     end
 
@@ -49,9 +50,17 @@ module AgentLoop
 
     def messages
       [
-        { role: "system", content: PromptTemplate.render("clarification_system") },
+        { role: "system", content: system_prompt },
         { role: "user", content: PromptTemplate.render("clarification_user", message: @message) }
       ]
+    end
+
+    def system_prompt
+      PromptComposer.new(
+        base_system: PromptTemplate.render("clarification_system"),
+        context: @context,
+        purpose: :clarification
+      ).system_prompt
     end
 
     def parse(content)

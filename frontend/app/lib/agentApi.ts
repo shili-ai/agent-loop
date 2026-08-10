@@ -3,6 +3,7 @@ import type {
   AgentConversationSummary,
   AgentDocument,
   AgentProject,
+  AgentSkill,
   NewConversationInput,
   NewProjectInput,
 } from "../types/agent";
@@ -35,6 +36,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function listProjects() {
   return request<AgentProject[]>("/api/agent_projects");
+}
+
+export function listSkills() {
+  return request<AgentSkill[]>("/api/agent_skills");
 }
 
 export function getProject(id: number) {

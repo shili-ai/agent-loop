@@ -13,6 +13,7 @@ module Api
 
     def create
       project = AgentProject.create!(project_params)
+      assign_default_skill(project)
 
       render json: serialize(project), status: :created
     end
@@ -38,20 +39,39 @@ module Api
         customer_name: project.customer_name,
         description: project.description,
         shared_context: project.shared_context,
+        skills: project_skills(project),
         documents: project.agent_documents.order(created_at: :desc).map { |document| AgentDocumentSerializer.new(document).as_json },
         updated_at: project.updated_at
       }
     end
 
+    def project_skills(project)
+      assignments = project.agent_skill_assignments.enabled.includes(:agent_skill).order(:priority)
+      if assignments.empty?
+        [ AgentSkillSerializer.new(AgentSkill.default_presales!).as_json ]
+      else
+        assignments.map { |assignment| AgentSkillSerializer.new(assignment.agent_skill, assignment: assignment).as_json }
+      end
+    end
+
     def ensure_default_project
       return if AgentProject.exists?
 
-      AgentProject.create!(
+      project = AgentProject.create!(
         title: "Presales workspace",
         industry: "Phần mềm",
         description: "Project mặc định cho các đoạn chat presales.",
         shared_context: "Dùng chung context về sản phẩm, khách hàng, tài liệu và nguyên tắc trả lời ở đây."
       )
+      assign_default_skill(project)
+    end
+
+    def assign_default_skill(project)
+      skill = AgentSkill.default_presales!
+      project.agent_skill_assignments.find_or_create_by!(agent_skill: skill) do |assignment|
+        assignment.priority = skill.priority
+        assignment.enabled = true
+      end
     end
   end
 end

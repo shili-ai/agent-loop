@@ -203,11 +203,12 @@ module AgentLoop
     end
 
     def system_prompt
-      PromptTemplate.render(
+      base = PromptTemplate.render(
         "decider_system",
         action_catalog: action_catalog,
         action_keys: ACTIONS.keys.join(", ")
       )
+      PromptComposer.new(base_system: base, context: @context, purpose: :decider).system_prompt
     end
 
     def action_catalog

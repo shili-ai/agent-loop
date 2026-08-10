@@ -242,6 +242,28 @@ export default function ProjectDetail() {
               </section>
               <section>
                 <div className="project-context-panel-header">
+                  <Typography.Text strong>Skills</Typography.Text>
+                  <Typography.Text type="secondary">Theo thứ tự ưu tiên</Typography.Text>
+                </div>
+                {project.skills?.length ? (
+                  <div className="rag-document-list">
+                    {project.skills.map((skill) => (
+                      <div className="rag-document-item" key={skill.id}>
+                        <span className="rag-document-title">{skill.name}</span>
+                        <span className="rag-document-meta">
+                          {skill.key} · priority {skill.priority}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <Typography.Paragraph type="secondary">
+                    Chưa gán skill riêng; agent sẽ dùng skill mặc định nếu cần.
+                  </Typography.Paragraph>
+                )}
+              </section>
+              <section>
+                <div className="project-context-panel-header">
                   <Typography.Text strong>Tài liệu RAG</Typography.Text>
                   <FileUploadButton
                     className="project-upload-btn"

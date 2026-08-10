@@ -200,7 +200,7 @@ module AgentLoop
 
         return decision if decision[:action] == "final_answer"
 
-        execute_action(run, intent, state, decision[:action], message)
+        execute_action(run, intent, state, decision[:action], message, context)
         return completed_artifact_decision if decision[:action] == "draft_artifact"
         return decision if decision[:action] == "ask_clarification"
       end
@@ -216,7 +216,7 @@ module AgentLoop
       }
     end
 
-    def execute_action(run, intent, state, action, message)
+    def execute_action(run, intent, state, action, message, context)
       case action
       when "search_documents"
         keywords = search_keywords(message)
@@ -335,7 +335,7 @@ module AgentLoop
           }
         )
       when "ask_clarification"
-        clarification = ClarificationBuilder.new(message: message, client: local_model_client).call
+        clarification = ClarificationBuilder.new(message: message, context: context, client: local_model_client).call
         state[:clarification] = clarification
         question_count = Array(clarification[:questions]).count
         append_working_note(
@@ -379,6 +379,7 @@ module AgentLoop
     def generate_model_answer(run, intent, tool_result, context, request_content)
       generator = ModelAnswerGenerator.new(
         client: local_model_client,
+        context: context,
         brief: FinalBriefBuilder.new(
           user_message: request_content,
           intent: intent,

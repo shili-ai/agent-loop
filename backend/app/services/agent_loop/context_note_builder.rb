@@ -13,6 +13,7 @@ module AgentLoop
       end
       lines << "- Ngành: #{value(conversation[:industry])}"
       lines << "- Khách hàng: #{value(conversation[:customer_name])}"
+      lines << "- Skill đang bật: #{skills.any? ? skills.map { |skill| skill[:name] }.join(', ') : 'chưa có'}"
       lines << "- Tin nhắn gần đây: #{recent_messages.count}"
       lines << ""
       lines << "Agent sẽ dùng ngữ cảnh này để giữ câu trả lời sát với chat hiện tại."
@@ -31,6 +32,10 @@ module AgentLoop
 
     def project
       @context[:project]
+    end
+
+    def skills
+      @context[:skills] || []
     end
 
     def value(item)

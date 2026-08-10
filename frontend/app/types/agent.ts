@@ -37,6 +37,16 @@ export type AgentDocument = {
   created_at: string;
 };
 
+export type AgentSkill = {
+  id: number;
+  key: string;
+  name: string;
+  description: string | null;
+  priority: number;
+  assignment_id?: number | null;
+  enabled: boolean;
+};
+
 export type AgentProject = {
   id: number;
   title: string;
@@ -44,6 +54,7 @@ export type AgentProject = {
   customer_name: string | null;
   description: string | null;
   shared_context: string | null;
+  skills?: AgentSkill[];
   documents?: AgentDocument[];
   updated_at?: string;
 };
@@ -55,6 +66,7 @@ export type AgentConversation = {
   industry: string;
   customer_name: string | null;
   project?: AgentProject | null;
+  skills?: AgentSkill[];
   documents?: AgentDocument[];
   messages: AgentMessage[];
   runs: AgentRun[];

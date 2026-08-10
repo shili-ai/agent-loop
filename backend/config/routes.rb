@@ -1,10 +1,13 @@
 Rails.application.routes.draw do
   namespace :api do
+    resources :agent_skills, only: [ :index ]
     resources :agent_projects, only: [ :index, :show, :create, :update ] do
       resources :documents, only: [ :create, :destroy ], controller: :agent_documents
+      resources :skill_assignments, only: [ :create, :destroy ], controller: :agent_skill_assignments
     end
     resources :agent_conversations, only: [ :index, :show, :create, :destroy ] do
       resources :documents, only: [ :create, :destroy ], controller: :agent_documents
+      resources :skill_assignments, only: [ :create, :destroy ], controller: :agent_skill_assignments
       resources :messages, only: [ :create ], module: :agent_conversations
     end
   end

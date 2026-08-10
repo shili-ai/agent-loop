@@ -2,8 +2,9 @@ require "json"
 
 module AgentLoop
   class ModelAnswerGenerator
-    def initialize(brief:, client: LocalModelClient.new)
+    def initialize(brief:, context: {}, client: LocalModelClient.new)
       @brief = brief
+      @context = context
       @client = client
     end
 
@@ -37,7 +38,11 @@ module AgentLoop
     end
 
     def system_prompt
-      PromptTemplate.render("answer_system")
+      PromptComposer.new(
+        base_system: PromptTemplate.render("answer_system"),
+        context: @context,
+        purpose: :answer
+      ).system_prompt
     end
 
     def synthesis_prompt

@@ -12,9 +12,11 @@ module AgentLoop
           id: @conversation.id,
           title: @conversation.title,
           industry: @conversation.industry,
-          customer_name: @conversation.customer_name
+          customer_name: @conversation.customer_name,
+          instructions: @conversation.instructions
         },
         project: project_context,
+        skills: skills,
         recent_messages: recent_messages
       }
     end
@@ -39,6 +41,10 @@ module AgentLoop
       @conversation.agent_messages.order(created_at: :desc).limit(MAX_MESSAGES).reverse.map do |message|
         { role: message.role, content: message.content }
       end
+    end
+
+    def skills
+      SkillResolver.new(conversation: @conversation).call
     end
   end
 end
