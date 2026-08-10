@@ -32,11 +32,21 @@ const components: Components = {
   },
 };
 
+function normalizeMarkdown(markdown: string) {
+  return markdown
+    .trim()
+    .replace(/^([ \t]{2,})(```[^\n]*\n)([\s\S]*?)^\1```[ \t]*$/gm, (_match, _indent, opening, body) => {
+      const language = opening.replace(/^```/, "").trim();
+      const fence = language ? `\`\`\`${language}` : "```";
+      return `\n${fence}\n${body.trimEnd()}\n\`\`\``;
+    });
+}
+
 export default function MarkdownContent({ children, className }: MarkdownContentProps) {
   return (
     <div className={className}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {children.trim()}
+        {normalizeMarkdown(children)}
       </ReactMarkdown>
     </div>
   );

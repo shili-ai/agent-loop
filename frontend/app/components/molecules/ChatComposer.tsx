@@ -1,4 +1,6 @@
-import { ArrowUpOutlined, PlusOutlined } from "@ant-design/icons";
+import { ArrowUpOutlined, CloudOutlined, DatabaseOutlined, FileAddOutlined, PlusOutlined } from "@ant-design/icons";
+import { Dropdown } from "antd";
+import { useRef } from "react";
 
 type ChatComposerProps = {
   disabled: boolean;
@@ -6,9 +8,11 @@ type ChatComposerProps = {
   model: string;
   modelOptions: string[];
   sending: boolean;
+  uploadingDocument?: boolean;
   onChange: (message: string) => void;
   onChangeModel: (model: string) => void;
   onSend: () => void;
+  onUploadDocument?: (file: File) => void;
 };
 
 export default function ChatComposer({
@@ -17,11 +21,40 @@ export default function ChatComposer({
   model,
   modelOptions,
   sending,
+  uploadingDocument = false,
   onChange,
   onChangeModel,
   onSend,
+  onUploadDocument,
 }: ChatComposerProps) {
   const canSend = Boolean(message.trim()) && !disabled;
+  const canUpload = Boolean(onUploadDocument) && !uploadingDocument;
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const addMenu = {
+    items: [
+      {
+        key: "upload",
+        label: uploadingDocument ? "Đang tải file..." : "Tải file lên",
+        icon: <FileAddOutlined />,
+        disabled: !canUpload,
+      },
+      {
+        key: "drive",
+        label: "Google Drive",
+        icon: <CloudOutlined />,
+        disabled: true,
+      },
+      {
+        key: "mcp",
+        label: "MCP / nguồn ngoài",
+        icon: <DatabaseOutlined />,
+        disabled: true,
+      },
+    ],
+    onClick: ({ key }: { key: string }) => {
+      if (key === "upload" && canUpload) fileInputRef.current?.click();
+    },
+  };
 
   return (
     <div className="composer-dock">
@@ -32,9 +65,23 @@ export default function ChatComposer({
           if (canSend) onSend();
         }}
       >
-        <button type="button" className="composer-attach" title="Đính kèm (sắp có)" disabled>
-          <PlusOutlined />
-        </button>
+        <Dropdown menu={addMenu} trigger={["click"]} placement="topLeft">
+          <button type="button" className="composer-attach" title="Thêm nguồn" aria-label="Thêm nguồn">
+            <PlusOutlined />
+          </button>
+        </Dropdown>
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden-file-input"
+          disabled={!canUpload}
+          accept=".txt,.md,.markdown,.csv,.tsv,.json,.html,.htm,.xml,.yaml,.yml,.log"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (file && onUploadDocument) onUploadDocument(file);
+          }}
+        />
         <div className="composer-input-wrap" data-replicated-value={message}>
           <textarea
             className="composer-input"

@@ -1,6 +1,7 @@
 import type {
   AgentConversation,
   AgentConversationSummary,
+  AgentDocument,
   AgentProject,
   NewConversationInput,
   NewProjectInput,
@@ -9,12 +10,16 @@ import type {
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const body = init?.body;
+  const headers = body instanceof FormData
+    ? init?.headers
+    : {
+        "Content-Type": "application/json",
+        ...init?.headers,
+      };
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -83,5 +88,23 @@ export function sendConversationMessage(conversationId: number, content: string,
   return request<AgentConversation>(`/api/agent_conversations/${conversationId}/messages`, {
     method: "POST",
     body: JSON.stringify({ message: { content, model } }),
+  });
+}
+
+export function uploadProjectDocument(projectId: number, file: File) {
+  const body = new FormData();
+  body.append("file", file);
+  return request<AgentDocument>(`/api/agent_projects/${projectId}/documents`, {
+    method: "POST",
+    body,
+  });
+}
+
+export function uploadConversationDocument(conversationId: number, file: File) {
+  const body = new FormData();
+  body.append("file", file);
+  return request<AgentDocument>(`/api/agent_conversations/${conversationId}/documents`, {
+    method: "POST",
+    body,
   });
 }

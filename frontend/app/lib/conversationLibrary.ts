@@ -17,7 +17,19 @@ export type ConversationLibrary = {
 };
 
 export function collectConversationLibrary(conversation: AgentConversation): ConversationLibrary {
-  return collectLibraryFromRuns(conversation.runs);
+  const library = collectLibraryFromRuns(conversation.runs);
+  conversation.documents?.forEach((document) => {
+    library.sources.push({
+      key: `source:document:uploaded:${document.id}`,
+      kind: "document",
+      title: document.title,
+      detail: document.agent_conversation_id ? "Tài liệu chat" : "Tài liệu project",
+      name: `${slugify(document.title) || "tai-lieu"}.md`,
+      content: documentMarkdown(document.title, document.content_preview, document.filename),
+      mime: "text/markdown;charset=utf-8",
+    });
+  });
+  return library;
 }
 
 export function collectRunOutputs(run?: AgentRun): LibraryItem[] {
@@ -43,28 +55,16 @@ function collectLibraryFromRuns(runs: AgentRun[]): ConversationLibrary {
     run.steps.forEach((step) => {
       const data = step.data ?? {};
 
-      asArray(data.documents).forEach((document) => {
-        const item = asRecord(document);
-        const title = asString(item.title);
-        const snippet = asString(item.snippet);
-        const source = asString(item.source);
-        push(sources, {
-          kind: "document",
-          title,
-          detail: asString(item.type) || source || undefined,
-          name: `${slugify(title) || "tai-lieu"}.md`,
-          content: documentMarkdown(title, snippet, source),
-          mime: "text/markdown;charset=utf-8",
-        });
-      });
-
       asArray(data.web_results).forEach((result) => {
         const item = asRecord(result);
+        const url = asString(item.url);
+        if (!url) return;
+
         push(sources, {
           kind: "web",
           title: asString(item.title),
-          detail: asString(item.source) || asString(item.url) || undefined,
-          url: asString(item.url) || undefined,
+          detail: url,
+          url,
         });
       });
 

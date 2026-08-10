@@ -9,7 +9,7 @@ import {
   PartitionOutlined,
   PlusOutlined,
   ProfileOutlined,
-  UploadOutlined,
+  ShareAltOutlined,
 } from "@ant-design/icons";
 import { Dropdown, Modal, Popover, Tooltip } from "antd";
 import { useMemo, useState } from "react";
@@ -27,7 +27,11 @@ type ConversationToolsProps = {
   onOpenLibraryItem?: (item: LibraryItem) => void;
 };
 
-export default function ConversationTools({ conversation, onDelete, onOpenLibraryItem }: ConversationToolsProps) {
+export default function ConversationTools({
+  conversation,
+  onDelete,
+  onOpenLibraryItem,
+}: ConversationToolsProps) {
   const [open, setOpen] = useState(false);
   const library = useMemo(() => (conversation ? collectConversationLibrary(conversation) : { outputs: [], sources: [] }), [conversation]);
   const answer = useMemo(() => (conversation ? latestAnswer(conversation) : ""), [conversation]);
@@ -131,7 +135,7 @@ export default function ConversationTools({ conversation, onDelete, onOpenLibrar
     <div className="chat-header-tools">
       <Tooltip title="Sao chép liên kết chia sẻ">
         <button type="button" className="chat-tool-btn" onClick={handleShare} aria-label="Chia sẻ">
-          <UploadOutlined />
+          <ShareAltOutlined />
         </button>
       </Tooltip>
       <Dropdown menu={moreMenu} trigger={["click"]} placement="bottomRight">

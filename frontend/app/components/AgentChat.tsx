@@ -9,6 +9,7 @@ import {
   listConversations,
   listProjects,
   sendConversationMessage,
+  uploadConversationDocument,
 } from "../lib/agentApi";
 import type {
   AgentConversation,
@@ -53,6 +54,7 @@ export default function AgentChat() {
   const [selectedModel, setSelectedModel] = useState(MODEL_OPTIONS[0]);
   const [projects, setProjects] = useState<AgentProject[]>([]);
   const [sending, setSending] = useState(false);
+  const [uploadingDocument, setUploadingDocument] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const latestRun = useMemo(() => conversation?.runs.at(-1), [conversation]);
@@ -245,6 +247,27 @@ export default function AgentChat() {
     }
   }
 
+  async function handleUploadDocument(file: File) {
+    if (!conversation || uploadingDocument) return;
+
+    setUploadingDocument(true);
+    setError(null);
+
+    try {
+      await uploadConversationDocument(conversation.id, file);
+      const updated = await getConversation(conversation.id);
+      setConversation(updated);
+      await Promise.all([
+        refreshConversationList(updated.agent_project_id ?? undefined),
+        refreshSidebarConversations(),
+      ]);
+    } catch {
+      setError("Không tải được tài liệu vào đoạn chat. Chỉ hỗ trợ tốt file text/markdown/csv/json/html ở bản này.");
+    } finally {
+      setUploadingDocument(false);
+    }
+  }
+
   return (
     <AgentChatTemplate
       errorNotice={<ErrorNotice message={error} />}
@@ -273,11 +296,13 @@ export default function AgentChat() {
           model={selectedModel}
           modelOptions={MODEL_OPTIONS}
           sending={sending}
+          uploadingDocument={uploadingDocument}
           onChangeMessage={setMessage}
           onChangeModel={setSelectedModel}
           onSend={() => handleSend()}
           onClarify={(text) => handleSend(text)}
           onDelete={handleDeleteConversation}
+          onUploadDocument={conversation ? handleUploadDocument : undefined}
         />
       }
       newConversationModal={null}

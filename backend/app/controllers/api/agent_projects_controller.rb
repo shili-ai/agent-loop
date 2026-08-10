@@ -38,6 +38,7 @@ module Api
         customer_name: project.customer_name,
         description: project.description,
         shared_context: project.shared_context,
+        documents: project.agent_documents.order(created_at: :desc).map { |document| AgentDocumentSerializer.new(document).as_json },
         updated_at: project.updated_at
       }
     end

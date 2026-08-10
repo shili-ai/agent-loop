@@ -220,7 +220,7 @@ module AgentLoop
       case action
       when "search_documents"
         keywords = search_keywords(message)
-        documents = DummyDocumentSearch.new(query: message).call
+        documents = DocumentSearch.new(query: message, conversation: @conversation).call
         state[:documents] = documents
         state[:search_attempts] = state[:search_attempts].to_i + 1
         summary =

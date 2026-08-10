@@ -11,6 +11,7 @@ class AgentConversationSerializer
       industry: @conversation.industry,
       customer_name: @conversation.customer_name,
       project: project,
+      documents: documents,
       messages: messages,
       runs: runs
     }
@@ -29,6 +30,14 @@ class AgentConversationSerializer
       description: @conversation.agent_project.description,
       shared_context: @conversation.agent_project.shared_context
     }
+  end
+
+  def documents
+    scoped_documents.map { |document| AgentDocumentSerializer.new(document).as_json }
+  end
+
+  def scoped_documents
+    AgentDocument.for_conversation_scope(@conversation).order(created_at: :desc)
   end
 
   def messages

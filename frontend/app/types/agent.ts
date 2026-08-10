@@ -23,6 +23,20 @@ export type AgentRun = {
   steps: AgentStep[];
 };
 
+export type AgentDocument = {
+  id: number;
+  agent_project_id: number | null;
+  agent_conversation_id: number | null;
+  title: string;
+  filename: string;
+  content_type: string | null;
+  byte_size: number;
+  summary: string | null;
+  content_preview: string;
+  extracted: boolean;
+  created_at: string;
+};
+
 export type AgentProject = {
   id: number;
   title: string;
@@ -30,6 +44,7 @@ export type AgentProject = {
   customer_name: string | null;
   description: string | null;
   shared_context: string | null;
+  documents?: AgentDocument[];
   updated_at?: string;
 };
 
@@ -40,6 +55,7 @@ export type AgentConversation = {
   industry: string;
   customer_name: string | null;
   project?: AgentProject | null;
+  documents?: AgentDocument[];
   messages: AgentMessage[];
   runs: AgentRun[];
 };

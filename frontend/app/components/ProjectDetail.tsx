@@ -12,9 +12,17 @@ import { Button, Empty, Input, List, Segmented, Select, Space, Spin, Typography 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { createConversation, getProject, listConversations, sendConversationMessage, updateProject } from "../lib/agentApi";
+import {
+  createConversation,
+  getProject,
+  listConversations,
+  sendConversationMessage,
+  updateProject,
+  uploadProjectDocument,
+} from "../lib/agentApi";
 import type { AgentConversationSummary, AgentProject, NewProjectInput } from "../types/agent";
 import ErrorNotice from "./atoms/ErrorNotice";
+import FileUploadButton from "./molecules/FileUploadButton";
 import ProjectModal from "./molecules/ProjectModal";
 import { ProjectPageFrame } from "./ProjectDirectory";
 
@@ -33,6 +41,7 @@ export default function ProjectDetail() {
   const [selectedModel, setSelectedModel] = useState(MODEL_OPTIONS[0]);
   const [starting, setStarting] = useState(false);
   const [taskMessage, setTaskMessage] = useState("");
+  const [uploadingDocument, setUploadingDocument] = useState(false);
 
   useEffect(() => {
     async function loadProject() {
@@ -93,6 +102,22 @@ export default function ProjectDetail() {
       setError("Không tạo được task trong project. Kiểm tra Rails API.");
     } finally {
       setStarting(false);
+    }
+  }
+
+  async function handleUploadProjectDocument(file: File) {
+    if (!project || uploadingDocument) return;
+
+    setUploadingDocument(true);
+    setError(null);
+
+    try {
+      await uploadProjectDocument(project.id, file);
+      setProject(await getProject(project.id));
+    } catch {
+      setError("Không tải được tài liệu vào project. Bản này hỗ trợ tốt file text/markdown/csv/json/html.");
+    } finally {
+      setUploadingDocument(false);
     }
   }
 
@@ -217,6 +242,33 @@ export default function ProjectDetail() {
               </section>
               <section>
                 <div className="project-context-panel-header">
+                  <Typography.Text strong>Tài liệu RAG</Typography.Text>
+                  <FileUploadButton
+                    className="project-upload-btn"
+                    disabled={uploadingDocument}
+                    title={uploadingDocument ? "Đang tải tài liệu" : "Thêm tài liệu vào project"}
+                    onUpload={handleUploadProjectDocument}
+                  />
+                </div>
+                {project.documents?.length ? (
+                  <div className="rag-document-list">
+                    {project.documents.map((document) => (
+                      <div className="rag-document-item" key={document.id}>
+                        <span className="rag-document-title">{document.title}</span>
+                        <span className="rag-document-meta">
+                          {document.extracted ? "Đã trích text" : "Chưa trích text"} · {formatBytes(document.byte_size)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <Typography.Paragraph type="secondary">
+                    Upload Markdown, text, CSV hoặc JSON để agent dùng làm nguồn RAG cho mọi chat trong project.
+                  </Typography.Paragraph>
+                )}
+              </section>
+              <section>
+                <div className="project-context-panel-header">
                   <Typography.Text strong>Scheduled</Typography.Text>
                   <Button size="small" type="text" icon={<PlusOutlined />} />
                 </div>
@@ -239,4 +291,10 @@ export default function ProjectDetail() {
       />
     </ProjectPageFrame>
   );
+}
+
+function formatBytes(value: number) {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }

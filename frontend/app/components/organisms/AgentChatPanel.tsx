@@ -22,11 +22,13 @@ type AgentChatPanelProps = {
   model: string;
   modelOptions: string[];
   sending: boolean;
+  uploadingDocument?: boolean;
   onChangeMessage: (message: string) => void;
   onChangeModel: (model: string) => void;
   onSend: () => void;
   onClarify: (text: string) => void;
   onDelete: () => void;
+  onUploadDocument?: (file: File) => void;
 };
 
 export default function AgentChatPanel({
@@ -40,11 +42,13 @@ export default function AgentChatPanel({
   model,
   modelOptions,
   sending,
+  uploadingDocument = false,
   onChangeMessage,
   onChangeModel,
   onSend,
   onClarify,
   onDelete,
+  onUploadDocument,
 }: AgentChatPanelProps) {
   const clarificationQuestions = pendingClarification(latestRun);
   const projectTitle = conversation?.project?.title ?? activeProject?.title;
@@ -80,7 +84,11 @@ export default function AgentChatPanel({
             </span>
           </div>
           <div className="chat-header-right">
-            <ConversationTools conversation={conversation} onDelete={onDelete} onOpenLibraryItem={openPreview} />
+            <ConversationTools
+              conversation={conversation}
+              onDelete={onDelete}
+              onOpenLibraryItem={openPreview}
+            />
           </div>
         </Flex>
 
@@ -95,9 +103,11 @@ export default function AgentChatPanel({
                 model={model}
                 modelOptions={modelOptions}
                 sending={sending}
+                uploadingDocument={uploadingDocument}
                 onChange={onChangeMessage}
                 onChangeModel={onChangeModel}
                 onSend={onSend}
+                onUploadDocument={onUploadDocument}
               />
             </div>
           </div>
@@ -146,9 +156,11 @@ export default function AgentChatPanel({
               model={model}
               modelOptions={modelOptions}
               sending={sending}
+              uploadingDocument={uploadingDocument}
               onChange={onChangeMessage}
               onChangeModel={onChangeModel}
               onSend={onSend}
+              onUploadDocument={onUploadDocument}
             />
           </>
         )}
