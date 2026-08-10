@@ -2,7 +2,6 @@ import { FolderOpenOutlined } from "@ant-design/icons";
 import { Empty, Flex, List, Spin } from "antd";
 import { pendingClarification } from "../../lib/clarification";
 import type { AgentConversation, AgentMessage, AgentProject, AgentRun } from "../../types/agent";
-import RunStatusTag from "../atoms/RunStatusTag";
 import ChatComposer from "../molecules/ChatComposer";
 import ClarificationForm from "../molecules/ClarificationForm";
 import ConversationTools from "../molecules/ConversationTools";
@@ -60,7 +59,6 @@ export default function AgentChatPanel({
           </span>
         </div>
         <div className="chat-header-right">
-          <RunStatusTag status={latestRun?.status} />
           <ConversationTools conversation={conversation} onDelete={onDelete} />
         </div>
       </Flex>

@@ -43,16 +43,14 @@ module Api
     end
 
     def ensure_default_project
-      project =
-        AgentProject.first ||
-        AgentProject.create!(
-          title: "Presales workspace",
-          industry: "Phần mềm",
-          description: "Project mặc định cho các đoạn chat presales.",
-          shared_context: "Dùng chung context về sản phẩm, khách hàng, tài liệu và nguyên tắc trả lời ở đây."
-        )
+      return if AgentProject.exists?
 
-      AgentConversation.where(agent_project_id: nil).update_all(agent_project_id: project.id, updated_at: Time.current)
+      AgentProject.create!(
+        title: "Presales workspace",
+        industry: "Phần mềm",
+        description: "Project mặc định cho các đoạn chat presales.",
+        shared_context: "Dùng chung context về sản phẩm, khách hàng, tài liệu và nguyên tắc trả lời ở đây."
+      )
     end
   end
 end

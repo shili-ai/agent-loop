@@ -1,20 +1,23 @@
 "use client";
 
-import { ArrowLeftOutlined, FolderAddOutlined, FolderOpenOutlined } from "@ant-design/icons";
-import { Button, ConfigProvider, Empty, List, Space, Spin, Typography, theme } from "antd";
+import { PlusOutlined } from "@ant-design/icons";
+import { Button, ConfigProvider, Empty, Spin, Typography, theme } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { listConversations, listProjects } from "../lib/agentApi";
-import type { AgentConversationSummary, AgentProject } from "../types/agent";
+import { createProject, listConversations, listProjects } from "../lib/agentApi";
+import type { AgentConversationSummary, AgentProject, NewProjectInput } from "../types/agent";
 import ErrorNotice from "./atoms/ErrorNotice";
+import ProjectModal from "./molecules/ProjectModal";
 import AgentSidebar from "./organisms/AgentSidebar";
 
 export default function ProjectDirectory() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<AgentProject[]>([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     async function loadProjects() {
@@ -33,69 +36,72 @@ export default function ProjectDirectory() {
     void loadProjects();
   }, []);
 
+  async function handleCreateProject(input: NewProjectInput) {
+    setSaving(true);
+    setError(null);
+
+    try {
+      await createProject(input);
+      setProjects(await listProjects());
+      setModalOpen(false);
+    } catch {
+      setError("Không tạo được project. Kiểm tra Rails API.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <ProjectPageFrame>
       <div className="project-page-header">
-        <Space direction="vertical" size={4}>
-          <Typography.Text type="secondary" className="project-page-eyebrow">
-            Presales AI Hub
-          </Typography.Text>
-          <Typography.Title level={2} className="project-page-title">
-            Projects
-          </Typography.Title>
-          <Typography.Text type="secondary">Quản lý context dùng chung và các chat theo từng dự án.</Typography.Text>
-        </Space>
-        <Link href="/">
-          <Button icon={<ArrowLeftOutlined />}>Về chat</Button>
-        </Link>
+        <Typography.Title level={2} className="project-page-title">
+          Projects
+        </Typography.Title>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
+          Tạo project
+        </Button>
       </div>
 
       {error ? <ErrorNotice message={error} /> : null}
 
-      <section className="project-page-section">
-        <div className="project-page-section-title">
-          <FolderAddOutlined />
-          <Typography.Text strong>Danh sách project</Typography.Text>
+      {loading ? (
+        <div className="project-page-loading">
+          <Spin />
         </div>
-        {loading ? (
-          <div className="project-page-loading">
-            <Spin />
-          </div>
-        ) : projects.length ? (
-          <List
-            className="project-directory-list"
-            dataSource={projects}
-            renderItem={(project) => (
-              <List.Item
-                actions={[
-                  <Link href={`/projects/${project.id}`} key="open">
-                    <Button type="link">Xem project</Button>
-                  </Link>,
-                ]}
-              >
-                <List.Item.Meta
-                  avatar={<FolderOpenOutlined className="project-list-icon" />}
-                  title={<Link href={`/projects/${project.id}`}>{project.title}</Link>}
-                  description={
-                    <Space direction="vertical" size={2}>
-                      <Typography.Text type="secondary">
-                        {[project.customer_name, project.industry].filter(Boolean).join(" · ")}
-                      </Typography.Text>
-                      <Typography.Text type="secondary" ellipsis>
-                        {project.description || project.shared_context || "Chưa có mô tả/context."}
-                      </Typography.Text>
-                    </Space>
-                  }
-                />
-              </List.Item>
-            )}
-          />
-        ) : (
-          <Empty description="Chưa có project" />
-        )}
-      </section>
+      ) : projects.length ? (
+        <div className="project-card-grid">
+          {projects.map((project) => (
+            <Link href={`/projects/${project.id}`} key={project.id} className="project-card">
+              <div className="project-card-title">{project.title}</div>
+              <div className="project-card-meta">{formatDate(project.updated_at)}</div>
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <Empty description="Chưa có project" />
+      )}
+
+      <ProjectModal
+        mode="create"
+        open={modalOpen}
+        project={null}
+        saving={saving}
+        onCancel={() => setModalOpen(false)}
+        onSubmit={handleCreateProject}
+      />
     </ProjectPageFrame>
   );
+}
+
+function formatDate(iso?: string) {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  try {
+    return new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+  } catch {
+    return "";
+  }
 }
 
 export function ProjectPageFrame({
@@ -139,7 +145,7 @@ export function ProjectPageFrame({
         token: {
           borderRadius: 8,
           fontFamily:
-            '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+            'var(--font-be-vietnam), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
           fontSize: 13,
         },
       }}
@@ -153,7 +159,6 @@ export function ProjectPageFrame({
           loading={sidebarLoading}
           projects={sidebarProjects}
           onCreateConversation={() => router.push("/")}
-          onCreateProject={() => router.push("/projects")}
           onSelectProject={(id) => router.push(`/projects/${id}`)}
           onSelectConversation={(id) => router.push(`/chat/${id}`)}
         />

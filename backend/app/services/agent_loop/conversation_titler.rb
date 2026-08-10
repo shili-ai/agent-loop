@@ -13,27 +13,25 @@ module AgentLoop
       first_user = @conversation.agent_messages.where(role: "user").order(:id).first
       return if first_user.blank?
 
-      assistant = @latest_answer.presence ||
-                  @conversation.agent_messages.where(role: "assistant").order(:id).first&.content
-
-      raw = @client.chat(messages: messages(first_user.content, assistant), temperature: 0.3)
+      raw = @client.chat(messages: messages(first_user.content), temperature: 0.3)
       sanitize(raw)
     end
 
     private
 
-    def messages(user_content, assistant_content)
+    def messages(user_content)
       [
         {
           role: "system",
-          content: "Bạn đặt tiêu đề ngắn gọn cho đoạn chat. Chỉ trả về đúng tiêu đề, " \
-                   "tối đa 6 từ, tiếng Việt có dấu, không dùng dấu ngoặc kép, không dấu chấm cuối, không giải thích."
+          content: "Bạn đặt tiêu đề ngắn gọn cho đoạn chat dựa trên YÊU CẦU của người dùng. " \
+                   "Tóm tắt chủ đề/mục tiêu trong câu hỏi của người dùng; KHÔNG dựa vào câu trả lời của trợ lý, " \
+                   "KHÔNG đặt tiêu đề kiểu 'cần thêm thông tin' hay 'cần làm rõ'. " \
+                   "Chỉ trả về đúng tiêu đề, tối đa 6 từ, tiếng Việt có dấu, không dùng dấu ngoặc kép, " \
+                   "không dấu chấm cuối, không giải thích."
         },
         {
           role: "user",
-          content: "Tin nhắn đầu của người dùng:\n#{user_content}\n\n" \
-                   "Câu trả lời của trợ lý:\n#{assistant_content.to_s[0, 600]}\n\n" \
-                   "Đặt một tiêu đề ngắn tóm tắt nội dung đoạn chat."
+          content: "Yêu cầu của người dùng:\n#{user_content}\n\nĐặt một tiêu đề ngắn tóm tắt yêu cầu này."
         }
       ]
     end

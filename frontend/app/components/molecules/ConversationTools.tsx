@@ -57,7 +57,7 @@ export default function ConversationTools({ conversation, onDelete }: Conversati
 
   async function handleShare() {
     if (!conversation) return;
-    const url = `${window.location.origin}/?conversation_id=${conversation.id}`;
+    const url = `${window.location.origin}/chat/${conversation.id}`;
     try {
       await navigator.clipboard.writeText(url);
     } catch {

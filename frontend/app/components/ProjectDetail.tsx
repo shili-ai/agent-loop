@@ -85,7 +85,7 @@ export default function ProjectDetail() {
         agent_project_id: project.id,
       });
       await sendConversationMessage(created.id, taskMessage.trim());
-      router.push(`/?conversation_id=${created.id}`);
+      router.push(`/chat/${created.id}`);
     } catch {
       setError("Không tạo được task trong project. Kiểm tra Rails API.");
     } finally {
@@ -175,7 +175,7 @@ export default function ProjectDetail() {
                   <List
                     dataSource={conversations}
                     renderItem={(conversation) => (
-                      <List.Item onClick={() => router.push(`/?conversation_id=${conversation.id}`)}>
+                      <List.Item onClick={() => router.push(`/chat/${conversation.id}`)}>
                         <List.Item.Meta
                           title={conversation.title}
                           description={[conversation.customer_name, conversation.industry].filter(Boolean).join(" · ")}

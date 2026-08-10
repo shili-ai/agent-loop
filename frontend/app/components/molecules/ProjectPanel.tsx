@@ -1,7 +1,13 @@
 "use client";
 
+import { RightOutlined } from "@ant-design/icons";
 import { Typography } from "antd";
+import Link from "next/link";
+import { useState } from "react";
 import type { AgentConversationSummary, AgentProject } from "../../types/agent";
+
+const MAX_PROJECTS = 5;
+const MAX_CHATS_PER_PROJECT = 5;
 
 type ProjectPanelProps = {
   activeConversationId?: number;
@@ -24,11 +30,40 @@ export default function ProjectPanel({
   onSelect,
   onSelectConversation,
 }: ProjectPanelProps) {
+  const [toggled, setToggled] = useState<Record<number, boolean>>({});
+
+  const looseConversations = conversations.filter((conversation) => conversation.agent_project_id == null);
+  const shownProjects = projects.slice(0, MAX_PROJECTS);
+  const extraProjects = projects.length - shownProjects.length;
+
+  const isOpen = (id: number) => toggled[id] ?? id === activeProject?.id;
+  const toggle = (id: number) => setToggled((prev) => ({ ...prev, [id]: !isOpen(id) }));
+
+  const renderChatRow = (conversation: AgentConversationSummary) => (
+    <div
+      className={
+        conversation.id === activeConversationId ? "project-chat-tree-row active" : "project-chat-tree-row"
+      }
+      key={conversation.id}
+      onClick={() => onSelectConversation(conversation.id)}
+    >
+      <Typography.Text ellipsis className="project-chat-tree-title">
+        {conversation.title}
+      </Typography.Text>
+      {relativeTime(conversation.updated_at) ? (
+        <span className="project-chat-tree-time">{relativeTime(conversation.updated_at)}</span>
+      ) : null}
+    </div>
+  );
+
   return (
     <section className="sidebar-section project-tree-section">
       <div className="project-tree">
-        {projects.map((project) => {
+        {shownProjects.length ? <div className="sidebar-group-label">Projects</div> : null}
+
+        {shownProjects.map((project) => {
           const active = project.id === activeProject?.id;
+          const open = isOpen(project.id);
           const projectConversations =
             active && activeProjectConversations.length
               ? activeProjectConversations
@@ -36,45 +71,51 @@ export default function ProjectPanel({
 
           return (
             <div className="project-tree-group" key={project.id}>
-              <div
+              <button
+                type="button"
                 className={active ? "project-tree-row active" : "project-tree-row"}
-                onClick={() => onSelect(project.id)}
-                title="Mở màn hình project"
+                onClick={() => toggle(project.id)}
               >
+                <RightOutlined className={open ? "project-tree-caret open" : "project-tree-caret"} />
                 <Typography.Text ellipsis className="project-tree-title">
                   {project.title}
                 </Typography.Text>
-              </div>
+              </button>
 
-              <div className="project-chat-tree">
-                {projectConversations.length ? (
-                  projectConversations.map((conversation) => (
-                    <div
-                      className={
-                        conversation.id === activeConversationId
-                          ? "project-chat-tree-row active"
-                          : "project-chat-tree-row"
-                      }
-                      key={conversation.id}
-                      onClick={() => onSelectConversation(conversation.id)}
-                    >
-                      <Typography.Text ellipsis className="project-chat-tree-title">
-                        {conversation.title}
-                      </Typography.Text>
-                      {relativeTime(conversation.updated_at) ? (
-                        <span className="project-chat-tree-time">{relativeTime(conversation.updated_at)}</span>
+              {open ? (
+                <div className="project-chat-tree">
+                  {projectConversations.length ? (
+                    <>
+                      {projectConversations.slice(0, MAX_CHATS_PER_PROJECT).map(renderChatRow)}
+                      {projectConversations.length > MAX_CHATS_PER_PROJECT ? (
+                        <button type="button" className="project-chat-more" onClick={() => onSelect(project.id)}>
+                          Xem thêm đoạn chat…
+                        </button>
                       ) : null}
-                    </div>
-                  ))
-                ) : (
-                  <Typography.Text type="secondary" className="project-chat-empty">
-                    {loading ? "Đang tải" : "Chưa có đoạn chat"}
-                  </Typography.Text>
-                )}
-              </div>
+                    </>
+                  ) : (
+                    <Typography.Text type="secondary" className="project-chat-empty">
+                      {loading ? "Đang tải" : "Chưa có đoạn chat"}
+                    </Typography.Text>
+                  )}
+                </div>
+              ) : null}
             </div>
           );
         })}
+
+        {extraProjects > 0 ? (
+          <Link href="/projects" className="project-chat-more project-more-link">
+            Xem thêm project…
+          </Link>
+        ) : null}
+
+        {looseConversations.length ? (
+          <div className="project-tree-group loose-group">
+            <div className="sidebar-group-label">Đoạn chat</div>
+            <div className="project-chat-tree loose">{looseConversations.map(renderChatRow)}</div>
+          </div>
+        ) : null}
       </div>
     </section>
   );

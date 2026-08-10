@@ -1,5 +1,5 @@
-import { FolderAddOutlined, FolderOpenOutlined, FormOutlined } from "@ant-design/icons";
-import { Avatar, Button, Flex, Layout, Space, Typography } from "antd";
+import { FolderOpenOutlined, FormOutlined } from "@ant-design/icons";
+import { Avatar, Button, Flex, Layout, Typography } from "antd";
 import Link from "next/link";
 import type { AgentConversation, AgentConversationSummary, AgentProject } from "../../types/agent";
 import ProjectPanel from "../molecules/ProjectPanel";
@@ -12,7 +12,6 @@ type AgentSidebarProps = {
   loading: boolean;
   projects: AgentProject[];
   onCreateConversation: () => void;
-  onCreateProject: () => void;
   onSelectProject: (id: number) => void;
   onSelectConversation: (id: number) => void;
 };
@@ -25,7 +24,6 @@ export default function AgentSidebar({
   loading,
   projects,
   onCreateConversation,
-  onCreateProject,
   onSelectProject,
   onSelectConversation,
 }: AgentSidebarProps) {
@@ -50,14 +48,11 @@ export default function AgentSidebar({
           <Button block type="text" icon={<FormOutlined />} onClick={onCreateConversation}>
             Đoạn chat mới
           </Button>
-          <Space.Compact block>
-            <Link href="/projects" className="sidebar-action-link">
-              <Button block type="text" icon={<FolderOpenOutlined />}>
-                Projects
-              </Button>
-            </Link>
-            <Button type="text" icon={<FolderAddOutlined />} title="Tạo project" onClick={onCreateProject} />
-          </Space.Compact>
+          <Link href="/projects" className="sidebar-action-link">
+            <Button block type="text" icon={<FolderOpenOutlined />}>
+              Projects
+            </Button>
+          </Link>
         </div>
 
         <div className="sidebar-scroll">

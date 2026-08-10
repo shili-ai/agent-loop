@@ -10,8 +10,7 @@ import {
   RobotOutlined,
   ToolOutlined,
 } from "@ant-design/icons";
-import { Collapse, List, Space, Typography } from "antd";
-import type { ReactNode } from "react";
+import { Space, Typography } from "antd";
 import { useState } from "react";
 import type { AgentMessage, AgentRun, AgentStep } from "../../types/agent";
 import MarkdownContent from "../atoms/MarkdownContent";
@@ -73,20 +72,16 @@ function PendingActivity() {
         <LoadingOutlined />
       </span>
       <div className="reason-content">
-        <div className="reason-head">
-          <span className="reason-label">Đang suy luận…</span>
-        </div>
-        <div className="reason-text">Model đang phân tích và lập luận để tìm hướng trả lời.</div>
+        <div className="reason-text">Model đang phân tích và lập luận để tìm hướng trả lời…</div>
       </div>
     </div>
   );
 }
 
 function StepActivity({ step }: { step: AgentStep }) {
-  const [showIo, setShowIo] = useState(false);
-  const output = normalizeOutput(step);
+  const [showDetail, setShowDetail] = useState(false);
   const tone = stepTone(step);
-  const details = stepDetails(step);
+  const text = reasoningText(step);
 
   return (
     <div className={`reason-step ${tone}`}>
@@ -94,14 +89,12 @@ function StepActivity({ step }: { step: AgentStep }) {
       <div className="reason-content">
         <div className="reason-head">
           <span className="reason-label">{stepLabel(step)}</span>
-          <button type="button" className="reason-io" onClick={() => setShowIo((value) => !value)}>
-            {showIo ? "Ẩn I/O" : "I/O"}
+          <button type="button" className="reason-io" onClick={() => setShowDetail((value) => !value)}>
+            {showDetail ? "Ẩn chi tiết" : "Chi tiết"}
           </button>
         </div>
-        {details ? <div className="reason-note">{details}</div> : null}
-        {step.summary ? <div className="reason-text">{step.summary}</div> : null}
-        {output ? <div className="reason-output">{output}</div> : null}
-        {showIo ? <StepIoPanel step={step} /> : null}
+        {text ? <div className="reason-text">{text}</div> : null}
+        {showDetail ? <StepIoPanel step={step} /> : null}
       </div>
     </div>
   );
@@ -125,19 +118,35 @@ function answerFromRun(run?: AgentRun) {
   return typeof output === "string" ? output : undefined;
 }
 
-function StepIoPanel({ step }: { step: AgentStep }) {
-  const input = stepInput(step);
-  const output = stepOutput(step);
+// A single, natural-language "thought" for each step — no structured dumps in the trace.
+function reasoningText(step: AgentStep): string {
+  const data = step.data ?? {};
 
+  if (step.kind === "decision" && typeof data.reason === "string" && data.reason.trim()) {
+    return data.reason.trim();
+  }
+  if (step.kind === "evaluation" && typeof data.done === "boolean") {
+    return data.done
+      ? "Mình thấy đã đủ dữ liệu, chuyển sang tổng hợp câu trả lời."
+      : "Chưa đủ dữ liệu, mình tiếp tục thu thập thêm.";
+  }
+  if (step.kind === "error" && data.error) {
+    return String(data.error);
+  }
+
+  return step.summary || "";
+}
+
+function StepIoPanel({ step }: { step: AgentStep }) {
   return (
     <div className="step-io-panel">
       <div className="step-io-column">
         <Typography.Text strong>Input</Typography.Text>
-        <pre>{JSON.stringify(input, null, 2)}</pre>
+        <pre>{JSON.stringify(stepInput(step), null, 2)}</pre>
       </div>
       <div className="step-io-column">
         <Typography.Text strong>Output</Typography.Text>
-        <pre>{output}</pre>
+        <pre>{JSON.stringify(step.data, null, 2)}</pre>
       </div>
     </div>
   );
@@ -145,11 +154,7 @@ function StepIoPanel({ step }: { step: AgentStep }) {
 
 function stepInput(step: AgentStep) {
   const data = step.data;
-  const base = {
-    kind: step.kind,
-    title: step.title,
-    summary: step.summary,
-  };
+  const base = { kind: step.kind, title: step.title, summary: step.summary };
 
   if (step.kind === "llm") {
     return {
@@ -157,48 +162,25 @@ function stepInput(step: AgentStep) {
       provider: data.provider,
       model: data.model,
       status: data.status,
-      request_started_at: data.request_started_at,
-      first_token_at: data.first_token_at,
-      last_token_at: data.last_token_at,
-      request_completed_at: data.request_completed_at,
       first_token_latency_ms: data.first_token_latency_ms,
-      last_token_latency_ms: data.last_token_latency_ms,
       total_duration_ms: data.total_duration_ms,
       streamed_chunks: data.streamed_chunks,
     };
   }
 
   if (step.kind === "decision") {
-    return {
-      ...base,
-      iteration: data.iteration,
-      action: data.action,
-      reason: data.reason,
-      source: data.source,
-      model: data.model,
-    };
+    return { ...base, iteration: data.iteration, action: data.action, reason: data.reason, source: data.source };
   }
 
   if (step.kind === "document_search" || step.kind === "web_search") {
-    return {
-      ...base,
-      tools: data.tools,
-    };
+    return { ...base, tools: data.tools };
   }
 
   if (step.kind === "artifact") {
-    return {
-      ...base,
-      tools: data.tools,
-      artifact_title: artifactTitle(data.artifact),
-    };
+    return { ...base, tools: data.tools, artifact_title: artifactTitle(data.artifact) };
   }
 
   return compactData(data, ["output", "diagram"]);
-}
-
-function stepOutput(step: AgentStep) {
-  return JSON.stringify(step.data, null, 2);
 }
 
 function compactData(data: Record<string, unknown>, omitKeys: string[]) {
@@ -209,7 +191,6 @@ function artifactTitle(artifact: unknown) {
   if (artifact && typeof artifact === "object" && "title" in artifact) {
     return String((artifact as { title?: unknown }).title ?? "");
   }
-
   return undefined;
 }
 
@@ -226,7 +207,6 @@ function stepIcon(step: AgentStep) {
   if (step.kind === "tool") return <ToolOutlined />;
   if (step.kind === "llm") return <RobotOutlined />;
   if (step.kind === "answer") return <CheckCircleOutlined />;
-  if (step.kind === "flow") return <CheckCircleOutlined />;
   if (step.kind === "error") return <CloseCircleOutlined />;
   return <CheckCircleOutlined />;
 }
@@ -255,211 +235,4 @@ function stepTone(step: AgentStep) {
   if (step.kind === "answer") return "final";
   if (step.kind === "error") return "error";
   return "agent";
-}
-
-function stepDetails(step: AgentStep) {
-  if (step.kind === "llm") {
-    const model = typeof step.data.model === "string" ? step.data.model : "model local";
-    const provider = typeof step.data.provider === "string" ? step.data.provider : "ollama";
-    const ttft = formatMs(metricNumber(step.data.first_token_latency_ms));
-    const total = formatMs(metricNumber(step.data.total_duration_ms));
-    return `${provider} · ${model}${ttft ? ` · token đầu: ${ttft}` : ""}${total ? ` · tổng: ${total}` : ""}`;
-  }
-
-  const tools = step.data.tools;
-  if (Array.isArray(tools) && tools.length) {
-    return `Công cụ: ${tools.map(String).join(", ")}`;
-  }
-
-  if (step.kind === "decision" && typeof step.data.action === "string") {
-    return `Action được chọn: ${step.data.action}`;
-  }
-
-  if (step.kind === "evaluation" && typeof step.data.done === "boolean") {
-    return step.data.done ? "Kết luận: đủ dữ liệu để kết thúc" : "Kết luận: cần chạy tiếp";
-  }
-
-  return null;
-}
-
-function normalizeOutput(step: AgentStep): ReactNode {
-  if (step.kind === "answer") return null;
-  if (step.kind === "tool") return <ToolOutput data={step.data} />;
-
-  if (typeof step.data.output === "string" && step.data.output.trim() && step.kind !== "llm") {
-    return <MarkdownContent className="markdown-content step-output-text">{step.data.output}</MarkdownContent>;
-  }
-
-  if (step.kind === "llm" && typeof step.data.output === "string" && step.data.output.trim()) {
-    return (
-      <Space direction="vertical" size={10} className="full-width">
-        <ModelMetrics data={step.data} />
-        <Collapse
-          ghost
-          size="small"
-          className="codex-output-collapse"
-          items={[
-            {
-              key: "model-output",
-              label: "Bản nháp từ model",
-              children: (
-                <MarkdownContent className="markdown-content step-output-text">{step.data.output}</MarkdownContent>
-              ),
-            },
-          ]}
-        />
-      </Space>
-    );
-  }
-
-  if (step.kind === "reasoning" && typeof step.data.intent === "string") {
-    return (
-      <Typography.Paragraph className="codex-step-body">
-        Agent chọn hướng: <Typography.Text code>{step.data.intent}</Typography.Text>
-      </Typography.Paragraph>
-    );
-  }
-
-  if (step.data.error) {
-    return <Typography.Text type="danger">{String(step.data.error)}</Typography.Text>;
-  }
-
-  return null;
-}
-
-function ModelMetrics({ data }: { data: Record<string, unknown> }) {
-  return (
-    <Typography.Text className="model-metrics">
-      <Typography.Text strong>Model:</Typography.Text> {stringValue(data.provider, "ollama")} ·{" "}
-      {stringValue(data.model, "-")} · <Typography.Text italic>token đầu</Typography.Text>{" "}
-      {metricTime(data.first_token_at, data.first_token_latency_ms)} ·{" "}
-      <Typography.Text italic>tổng</Typography.Text> {formatMs(metricNumber(data.total_duration_ms)) ?? "-"} · chunks{" "}
-      {String(data.streamed_chunks ?? "-")}
-    </Typography.Text>
-  );
-}
-
-function metricTime(timestamp: unknown, latency: unknown) {
-  const time = formatTime(timestamp);
-  const duration = formatMs(metricNumber(latency));
-  return duration ? `${time} (${duration})` : time;
-}
-
-function formatTime(value: unknown) {
-  if (typeof value !== "string" || !value) return "-";
-
-  try {
-    return new Intl.DateTimeFormat("vi-VN", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      fractionalSecondDigits: 3,
-    }).format(new Date(value));
-  } catch {
-    return value;
-  }
-}
-
-function formatMs(value: number | null) {
-  if (value === null) return null;
-  if (value < 1000) return `${value} ms`;
-  return `${(value / 1000).toFixed(2)} s`;
-}
-
-function metricNumber(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function stringValue(value: unknown, fallback: string) {
-  return typeof value === "string" && value ? value : fallback;
-}
-
-function ToolOutput({ data }: { data: Record<string, unknown> }) {
-  const tools = data.tools as string[] | undefined;
-  const artifact = data.artifact as { title?: string; bullets?: string[] } | undefined;
-  const documents = data.documents as Array<{ title?: string; type?: string; snippet?: string }> | undefined;
-  const webResults = data.web_results as Array<{ title?: string; url?: string; snippet?: string; source?: string }> | undefined;
-  const markdownOutput = typeof data.output === "string" && data.output.trim() ? data.output : null;
-
-  return (
-    <Space direction="vertical" size={8} className="full-width">
-      {markdownOutput ? <MarkdownContent className="markdown-content step-output-text">{markdownOutput}</MarkdownContent> : null}
-
-      {tools?.length ? (
-        <Typography.Text type="secondary">
-          <Typography.Text strong>Công cụ:</Typography.Text> {tools.join(", ")}
-        </Typography.Text>
-      ) : null}
-
-      {artifact?.bullets?.length ? (
-        <List
-          size="small"
-          header={<Typography.Text strong>{artifact.title}</Typography.Text>}
-          dataSource={artifact.bullets}
-          renderItem={(item) => <List.Item>{item}</List.Item>}
-        />
-      ) : null}
-
-      {documents?.length ? (
-        <Collapse
-          ghost
-          size="small"
-          className="codex-output-collapse"
-          items={[
-            {
-              key: "documents",
-              label: `Tài liệu tìm thấy (${documents.length})`,
-              children: (
-                <List
-                  size="small"
-                  dataSource={documents}
-                  renderItem={(document) => (
-                    <List.Item>
-                      <Space direction="vertical" size={0}>
-                        <Typography.Text strong>{document.title}</Typography.Text>
-                        <Typography.Text type="secondary">
-                          {document.type}: {document.snippet}
-                        </Typography.Text>
-                      </Space>
-                    </List.Item>
-                  )}
-                />
-              ),
-            },
-          ]}
-        />
-      ) : null}
-
-      {webResults?.length ? (
-        <Collapse
-          ghost
-          size="small"
-          className="codex-output-collapse"
-          items={[
-            {
-              key: "web-results",
-              label: `Kết quả web (${webResults.length})`,
-              children: (
-                <List
-                  size="small"
-                  dataSource={webResults}
-                  renderItem={(result) => (
-                    <List.Item>
-                      <Space direction="vertical" size={0}>
-                        <Typography.Text strong>{result.title}</Typography.Text>
-                        <Typography.Text type="secondary">
-                          {result.url ? `${result.url}: ` : ""}
-                          {result.snippet}
-                        </Typography.Text>
-                      </Space>
-                    </List.Item>
-                  )}
-                />
-              ),
-            },
-          ]}
-        />
-      ) : null}
-    </Space>
-  );
 }

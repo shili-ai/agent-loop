@@ -21,7 +21,7 @@ export default function AgentChatTemplate({
         token: {
           borderRadius: 8,
           fontFamily:
-            '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+            'var(--font-be-vietnam), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
           fontSize: 13,
         },
       }}

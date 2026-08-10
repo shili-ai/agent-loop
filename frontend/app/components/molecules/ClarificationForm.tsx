@@ -1,10 +1,8 @@
 "use client";
 
-import { Button, Input, Radio, Space, Typography } from "antd";
-import { useMemo, useState } from "react";
+import { CloseOutlined, EditOutlined, EnterOutlined } from "@ant-design/icons";
+import { useEffect, useRef, useState } from "react";
 import type { ClarificationQuestion } from "../../lib/clarification";
-
-const OTHER = "__other__";
 
 type ClarificationFormProps = {
   questions: ClarificationQuestion[];
@@ -12,89 +10,114 @@ type ClarificationFormProps = {
   onSubmit: (text: string) => void;
 };
 
+type Collected = { question: string; answer: string };
+
 export default function ClarificationForm({ questions, disabled, onSubmit }: ClarificationFormProps) {
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [others, setOthers] = useState<Record<string, string>>({});
+  const [index, setIndex] = useState(0);
+  const [collected, setCollected] = useState<Collected[]>([]);
+  const [customMode, setCustomMode] = useState(false);
+  const [customText, setCustomText] = useState("");
+  const submittedRef = useRef(false);
+  const customInputRef = useRef<HTMLInputElement>(null);
 
-  const keyOf = (question: ClarificationQuestion, index: number) => question.id ?? String(index);
+  const current = questions[index];
+  const options = current?.type === "choice" ? current.options ?? [] : [];
+  const total = questions.length;
 
-  const resolve = (question: ClarificationQuestion, key: string) => {
-    const raw = answers[key];
-    if (question.type === "choice" && raw === OTHER) return (others[key] ?? "").trim();
-    return (raw ?? "").trim();
-  };
+  useEffect(() => {
+    if (customMode) customInputRef.current?.focus();
+  }, [customMode]);
 
-  const canSubmit = useMemo(
-    () => questions.some((question, index) => resolve(question, keyOf(question, index)).length > 0),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [questions, answers, others]
-  );
+  if (!current) return null;
 
-  const submit = () => {
-    const lines = questions
-      .map((question, index) => {
-        const value = resolve(question, keyOf(question, index));
-        return value ? `- ${question.question} ${value}` : null;
-      })
-      .filter((line): line is string => Boolean(line));
+  function finish(all: Collected[]) {
+    if (submittedRef.current) return;
+    submittedRef.current = true;
+    const lines = all.filter((item) => item.answer.trim()).map((item) => `- ${item.question} ${item.answer.trim()}`);
+    onSubmit(lines.length ? `Bổ sung ngữ cảnh:\n${lines.join("\n")}` : "Cứ tiếp tục với thông tin hiện có.");
+  }
 
-    if (!lines.length) return;
-    onSubmit(`Bổ sung ngữ cảnh:\n${lines.join("\n")}`);
-  };
+  function answer(value: string) {
+    const next = [...collected, { question: current.question, answer: value }];
+    if (index + 1 < total) {
+      setCollected(next);
+      setIndex((value2) => value2 + 1);
+      setCustomMode(false);
+      setCustomText("");
+    } else {
+      finish(next);
+    }
+  }
+
+  function submitCustom() {
+    const value = customText.trim();
+    if (!value) return;
+    answer(value);
+  }
 
   return (
-    <div className="clarification-form">
-      <Space direction="vertical" size={16} className="full-width">
-        <Typography.Text strong>AI đề xuất vài câu hỏi để agent tiếp tục</Typography.Text>
+    <div className="clarify-card" onKeyDown={(event) => {
+      if (customMode) return;
+      const digit = Number(event.key);
+      if (Number.isInteger(digit) && digit >= 1 && digit <= options.length) {
+        event.preventDefault();
+        answer(options[digit - 1]);
+      }
+    }} tabIndex={-1}>
+      <div className="clarify-head">
+        <span className="clarify-question">{current.question}</span>
+        <div className="clarify-head-meta">
+          {total > 1 ? <span className="clarify-progress">{index + 1}/{total}</span> : null}
+          <button type="button" className="clarify-close" onClick={() => finish(collected)} aria-label="Bỏ qua">
+            <CloseOutlined />
+          </button>
+        </div>
+      </div>
 
-        {questions.map((question, index) => {
-          const key = keyOf(question, index);
-          const isChoice = question.type === "choice" && (question.options?.length ?? 0) > 0;
+      <div className="clarify-options">
+        {options.map((option, optionIndex) => (
+          <button
+            type="button"
+            key={option}
+            className="clarify-option"
+            disabled={disabled}
+            onClick={() => answer(option)}
+          >
+            <span className="clarify-num">{optionIndex + 1}</span>
+            <span className="clarify-option-label">{option}</span>
+            <EnterOutlined className="clarify-enter" />
+          </button>
+        ))}
 
-          return (
-            <div key={key} className="clarification-question">
-              <Typography.Text strong>{question.question}</Typography.Text>
-
-              {isChoice ? (
-                <Space direction="vertical" size={6} className="full-width">
-                  <Radio.Group
-                    value={answers[key]}
-                    onChange={(event) => setAnswers((prev) => ({ ...prev, [key]: event.target.value }))}
-                  >
-                    <Space direction="vertical" size={4}>
-                      {question.options?.map((option) => (
-                        <Radio key={option} value={option}>
-                          {option}
-                        </Radio>
-                      ))}
-                      <Radio value={OTHER}>Khác…</Radio>
-                    </Space>
-                  </Radio.Group>
-
-                  {answers[key] === OTHER ? (
-                    <Input
-                      placeholder="Nhập câu trả lời khác"
-                      value={others[key] ?? ""}
-                      onChange={(event) => setOthers((prev) => ({ ...prev, [key]: event.target.value }))}
-                    />
-                  ) : null}
-                </Space>
-              ) : (
-                <Input.TextArea
-                  autoSize={{ minRows: 1, maxRows: 4 }}
-                  placeholder="Nhập câu trả lời"
-                  value={answers[key] ?? ""}
-                  onChange={(event) => setAnswers((prev) => ({ ...prev, [key]: event.target.value }))}
-                />
-              )}
-            </div>
-          );
-        })}
-
-        <Button type="primary" disabled={disabled || !canSubmit} onClick={submit}>
-          Gửi câu trả lời
-        </Button>
-      </Space>
+        <div className={customMode ? "clarify-option clarify-other editing" : "clarify-option clarify-other"}>
+          <span className="clarify-num">
+            <EditOutlined />
+          </span>
+          {customMode ? (
+            <input
+              ref={customInputRef}
+              className="clarify-custom-input"
+              placeholder="Nhập câu trả lời của bạn…"
+              value={customText}
+              disabled={disabled}
+              onChange={(event) => setCustomText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  submitCustom();
+                }
+              }}
+            />
+          ) : (
+            <button type="button" className="clarify-other-label" onClick={() => setCustomMode(true)}>
+              Câu trả lời khác
+            </button>
+          )}
+          <button type="button" className="clarify-skip" onClick={() => answer("")}>
+            Bỏ qua
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
