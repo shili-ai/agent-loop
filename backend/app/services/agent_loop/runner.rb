@@ -38,24 +38,29 @@ module AgentLoop
         context.merge(output: ContextNoteBuilder.new(context: context).call)
       )
 
-      intent = IntentClassifier.new(message: request_content).call
+      analysis = build_model_analysis(run, request_content, context)
+      intent = analysis[:intent]
       run.update!(intent: intent)
       create_step(
         run,
         "reasoning",
-        "Phân loại ý định",
-        "Người dùng nhắn: “#{truncate(request_content)}”. Mình hiểu đây là yêu cầu #{humanize_intent(intent)}, nên sẽ xử lý theo hướng đó.",
-        { intent: intent, output: IntentNoteBuilder.new(intent: intent, message: request_content).call }
+        analysis[:source] == "model" ? "Phân tích ý định bằng model" : "Phân tích ý định fallback",
+        analysis_summary(analysis, request_content),
+        analysis.merge(intent_note: IntentNoteBuilder.new(intent: intent, message: request_content).call)
       )
 
-      plan = LoopPlanBuilder.new(intent: intent, message: request_content).call
+      plan = {
+        goal: analysis[:goal],
+        actions: analysis[:actions],
+        output: analysis[:output]
+      }
       plan_actions = Array(plan[:actions]).map { |action| humanize_action(action) }.join(" → ")
       create_step(
         run,
         "plan",
-        "Lập plan",
+        analysis[:source] == "model" ? "Lập plan bằng model" : "Lập plan fallback",
         "Mình dự định lần lượt: #{plan_actions}. Mục tiêu: #{plan[:goal]}",
-        plan
+        plan.merge(source: analysis[:source])
       )
 
       state = {
@@ -110,6 +115,40 @@ module AgentLoop
     end
 
     private
+
+    def build_model_analysis(run, request_content, context)
+      analyzer = ModelAnalysisBuilder.new(message: request_content, context: context)
+      initial_summary = "Mình gọi model #{analyzer.client.model} (qua Ollama) để hiểu yêu cầu, chọn intent và lập plan hành động."
+      step = create_step(
+        run,
+        "llm",
+        "Gọi model phân tích",
+        initial_summary,
+        {
+          provider: "ollama",
+          model: analyzer.client.model,
+          output: nil,
+          status: "running",
+          request_started_at: Time.now.utc.iso8601(6)
+        }
+      )
+      result = analyzer.call_with_metrics
+      analysis = result[:analysis]
+      duration = format_duration(result.dig(:metrics, :total_duration_ms))
+      if analysis[:source] == "model"
+        step.update!(
+          summary: "#{initial_summary}\nModel #{analyzer.client.model} đã phân tích xong yêu cầu#{duration ? " (mất #{duration})" : ""}.",
+          data: result[:metrics].merge(output: analysis[:output], raw: result[:raw], status: "completed")
+        )
+      else
+        step.update!(
+          title: "Fallback khi model phân tích lỗi",
+          summary: "Model phân tích bị lỗi, dùng IntentClassifier và LoopPlanBuilder dự phòng.",
+          data: result[:metrics].merge(output: analysis[:output], error: analysis[:error], status: "failed")
+        )
+      end
+      analysis
+    end
 
     def maybe_generate_title(assistant_message)
       return unless @conversation.needs_generated_title?
@@ -177,7 +216,7 @@ module AgentLoop
           "document_search",
           "Tìm tài liệu",
           summary,
-          { tools: ["document_search"], query: message, keywords: keywords, documents: documents, output: DocumentSearchNoteBuilder.new(documents: documents).call }
+          { tools: [ "document_search" ], query: message, keywords: keywords, documents: documents, output: DocumentSearchNoteBuilder.new(documents: documents).call }
         )
       when "web_search"
         keywords = search_keywords(message)
@@ -195,7 +234,7 @@ module AgentLoop
           "web_search",
           "Tìm trên web",
           summary,
-          { tools: ["web_search"], query: message, keywords: keywords, web_results: results, output: WebSearchNoteBuilder.new(results: results).call }
+          { tools: [ "web_search" ], query: message, keywords: keywords, web_results: results, output: WebSearchNoteBuilder.new(results: results).call }
         )
       when "draft_artifact"
         artifact_result = ArtifactBuilder.new(intent: intent, documents: state[:documents]).call
@@ -209,7 +248,7 @@ module AgentLoop
           "Soạn bản nháp",
           "Dựa trên #{evidence} tài liệu tìm được, mình phác thảo bản nháp “#{artifact_result[:artifact][:title]}”#{bullets.any? ? " gồm #{bullets.count} ý chính" : ""}.",
           {
-            tools: [artifact_result[:tool]],
+            tools: [ artifact_result[:tool] ],
             artifact: artifact_result[:artifact],
             output: artifact_result[:output]
           }
@@ -318,7 +357,7 @@ module AgentLoop
     end
 
     def context_summary(context)
-      bits = ["#{Array(context[:recent_messages]).size} tin nhắn gần đây"]
+      bits = [ "#{Array(context[:recent_messages]).size} tin nhắn gần đây" ]
       customer = context.dig(:conversation, :customer_name)
       industry = context.dig(:conversation, :industry)
       project = context.dig(:project, :title)
@@ -326,6 +365,13 @@ module AgentLoop
       bits << "ngành #{industry}" if industry.present?
       bits << "context của project “#{project}”" if project.present?
       "Mình xem lại #{bits.join(", ")} để giữ mạch và trả lời sát ngữ cảnh."
+    end
+
+    def analysis_summary(analysis, request_content)
+      source = analysis[:source] == "model" ? "model" : "luật dự phòng"
+      understanding = analysis[:understanding].to_s.strip
+      base = "Sau khi đọc “#{truncate(request_content)}”, #{source} hiểu đây là yêu cầu #{humanize_intent(analysis[:intent])}."
+      understanding.present? ? "#{base} #{understanding}" : base
     end
 
     def decision_summary(decision, iteration)
@@ -342,6 +388,7 @@ module AgentLoop
       when "battlecard" then "làm battlecard"
       when "follow_up" then "soạn email follow-up"
       when "rfp_answer" then "trả lời RFP/RFI"
+      when "web_search" then "tra cứu thông tin trên web"
       when "document_search" then "tìm và tóm tắt tài liệu"
       else "tư vấn presales tổng quát"
       end

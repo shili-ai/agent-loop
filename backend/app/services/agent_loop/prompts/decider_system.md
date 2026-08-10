@@ -13,4 +13,4 @@ Nguyên tắc:
 - Nếu yêu cầu quá ngắn/mơ hồ, chọn ask_clarification.
 
 Chỉ trả về JSON đúng định dạng, không thêm chữ nào khác:
-{"action": "<một trong: {{action_keys}}>", "reason": "<lý do ngắn bằng tiếng Việt>"}
+{"action": "<một trong: {{action_keys}}>", "reason": "<1 câu tiếng Việt tự nhiên, ngôi thứ nhất ('mình…'), giải thích vì sao mình chọn action này dựa trên trạng thái hiện tại>"}
