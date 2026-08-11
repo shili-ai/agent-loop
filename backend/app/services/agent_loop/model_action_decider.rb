@@ -31,6 +31,10 @@ module AgentLoop
       messages
     end
 
+    def prompt_layer_summary
+      prompt_composer.prompt_layer_summary
+    end
+
     def call
       return forced_final if @iteration >= @max_iterations
 
@@ -174,6 +178,7 @@ module AgentLoop
         model: @client.model,
         metrics: metrics,
         prompt_messages: @last_prompt_messages,
+        prompt_layers: @last_prompt_messages ? prompt_layer_summary : nil,
         raw: raw,
         output: markdown(normalized, reason, source)
       }
@@ -203,12 +208,19 @@ module AgentLoop
     end
 
     def system_prompt
-      base = PromptTemplate.render(
+      prompt_composer.system_prompt
+    end
+
+    def system_prompt_base
+      PromptTemplate.render(
         "decider_system",
         action_catalog: action_catalog,
         action_keys: ACTIONS.keys.join(", ")
       )
-      PromptComposer.new(base_system: base, context: @context, purpose: :decider).system_prompt
+    end
+
+    def prompt_composer
+      @prompt_composer ||= PromptComposer.new(base_system: system_prompt_base, context: @context, purpose: :decider)
     end
 
     def action_catalog

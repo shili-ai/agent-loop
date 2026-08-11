@@ -17,6 +17,10 @@ module AgentLoop
       messages
     end
 
+    def prompt_layer_summary
+      prompt_composer.prompt_layer_summary
+    end
+
     def call
       prompt = prompt_messages
       result = @client.chat_with_metrics(messages: prompt, temperature: 0.2, format: "json")
@@ -30,6 +34,7 @@ module AgentLoop
         provider: "ollama",
         model: @client.model,
         prompt_messages: prompt,
+        prompt_layers: prompt_layer_summary,
         metrics: result[:metrics],
         raw: result[:content]
       }
@@ -42,6 +47,7 @@ module AgentLoop
         provider: "ollama",
         model: @client.model,
         prompt_messages: prompt_messages,
+        prompt_layers: prompt_layer_summary,
         error: e.message
       }
     end
@@ -56,11 +62,15 @@ module AgentLoop
     end
 
     def system_prompt
-      PromptComposer.new(
+      prompt_composer.system_prompt
+    end
+
+    def prompt_composer
+      @prompt_composer ||= PromptComposer.new(
         base_system: PromptTemplate.render("clarification_system"),
         context: @context,
         purpose: :clarification
-      ).system_prompt
+      )
     end
 
     def parse(content)

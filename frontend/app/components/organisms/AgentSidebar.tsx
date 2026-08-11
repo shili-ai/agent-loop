@@ -1,4 +1,4 @@
-import { FolderOpenOutlined, FormOutlined } from "@ant-design/icons";
+import { FolderOpenOutlined, FormOutlined, ToolOutlined } from "@ant-design/icons";
 import { Avatar, Button, Flex, Layout, Typography } from "antd";
 import Link from "next/link";
 import type { AgentConversation, AgentConversationSummary, AgentProject } from "../../types/agent";
@@ -51,6 +51,11 @@ export default function AgentSidebar({
           <Link href="/projects" className="sidebar-action-link">
             <Button block type="text" icon={<FolderOpenOutlined />}>
               Projects
+            </Button>
+          </Link>
+          <Link href="/skills" className="sidebar-action-link">
+            <Button block type="text" icon={<ToolOutlined />}>
+              Skills & Prompts
             </Button>
           </Link>
         </div>

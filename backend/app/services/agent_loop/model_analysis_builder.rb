@@ -26,6 +26,10 @@ module AgentLoop
       messages
     end
 
+    def prompt_layer_summary
+      prompt_composer.prompt_layer_summary
+    end
+
     def call_with_metrics
       result = @client.chat_with_metrics(messages: messages, temperature: 0, format: "json")
       parsed = parse(result[:content])
@@ -114,11 +118,15 @@ module AgentLoop
     end
 
     def system_prompt
-      PromptComposer.new(
+      prompt_composer.system_prompt
+    end
+
+    def prompt_composer
+      @prompt_composer ||= PromptComposer.new(
         base_system: PromptTemplate.render("analysis_system"),
         context: @context,
         purpose: :analysis
-      ).system_prompt
+      )
     end
 
     def user_prompt

@@ -14,6 +14,10 @@ module AgentLoop
       messages
     end
 
+    def prompt_layer_summary
+      prompt_composer.prompt_layer_summary
+    end
+
     def call
       @client.chat(messages: messages)
     end
@@ -38,11 +42,15 @@ module AgentLoop
     end
 
     def system_prompt
-      PromptComposer.new(
+      prompt_composer.system_prompt
+    end
+
+    def prompt_composer
+      @prompt_composer ||= PromptComposer.new(
         base_system: PromptTemplate.render("answer_system"),
         context: @context,
         purpose: :answer
-      ).system_prompt
+      )
     end
 
     def synthesis_prompt

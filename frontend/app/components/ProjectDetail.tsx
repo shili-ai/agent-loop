@@ -1,32 +1,36 @@
 "use client";
 
 import {
-  AudioOutlined,
+  DeleteOutlined,
   EditOutlined,
   LockOutlined,
   PlusOutlined,
   PushpinOutlined,
   ShareAltOutlined,
 } from "@ant-design/icons";
-import { Button, Empty, Input, List, Segmented, Select, Space, Spin, Typography } from "antd";
+import { Button, Empty, List, Modal, Segmented, Select, Space, Spin, Typography } from "antd";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
+  assignProjectSkill,
   createConversation,
   getProject,
   listConversations,
+  listSkills,
+  removeProjectSkill,
   sendConversationMessage,
   updateProject,
   uploadProjectDocument,
 } from "../lib/agentApi";
-import type { AgentConversationSummary, AgentProject, NewProjectInput } from "../types/agent";
+import type { AgentConversationSummary, AgentProject, AgentSkill, NewProjectInput } from "../types/agent";
 import ErrorNotice from "./atoms/ErrorNotice";
+import ChatComposer from "./molecules/ChatComposer";
 import FileUploadButton from "./molecules/FileUploadButton";
 import ProjectModal from "./molecules/ProjectModal";
 import { ProjectPageFrame } from "./ProjectDirectory";
 
-const MODEL_OPTIONS = ["qwen3:8b", "llama3.2:3b", "gpt-oss:20b"];
+const MODEL_OPTIONS = ["llama3.2:3b", "llama3.1:8b", "qwen3:8b"];
 
 export default function ProjectDetail() {
   const params = useParams<{ id: string }>();
@@ -38,7 +42,11 @@ export default function ProjectDetail() {
   const [loading, setLoading] = useState(true);
   const [project, setProject] = useState<AgentProject | null>(null);
   const [saving, setSaving] = useState(false);
+  const [skillCatalog, setSkillCatalog] = useState<AgentSkill[]>([]);
+  const [skillMutationId, setSkillMutationId] = useState<number | null>(null);
+  const [skillToAssign, setSkillToAssign] = useState<number | null>(null);
   const [selectedModel, setSelectedModel] = useState(MODEL_OPTIONS[0]);
+  const [selectedSkill, setSelectedSkill] = useState<AgentSkill | null>(null);
   const [starting, setStarting] = useState(false);
   const [taskMessage, setTaskMessage] = useState("");
   const [uploadingDocument, setUploadingDocument] = useState(false);
@@ -51,12 +59,14 @@ export default function ProjectDetail() {
       setError(null);
 
       try {
-        const [loadedProject, loadedConversations] = await Promise.all([
+        const [loadedProject, loadedConversations, loadedSkills] = await Promise.all([
           getProject(projectId),
           listConversations(projectId),
+          listSkills(),
         ]);
         setProject(loadedProject);
         setConversations(loadedConversations);
+        setSkillCatalog(loadedSkills);
       } catch {
         setError("Không tải được project. Kiểm tra Rails API.");
       } finally {
@@ -121,6 +131,44 @@ export default function ProjectDetail() {
     }
   }
 
+  async function handleAssignSkill() {
+    if (!project || !skillToAssign) return;
+
+    setSkillMutationId(skillToAssign);
+    setError(null);
+
+    try {
+      await assignProjectSkill(project.id, skillToAssign);
+      setProject(await getProject(project.id));
+      setSkillToAssign(null);
+    } catch {
+      setError("Không gán được skill vào project.");
+    } finally {
+      setSkillMutationId(null);
+    }
+  }
+
+  async function handleRemoveSkill(skill: AgentSkill) {
+    if (!project || !skill.assignment_id) return;
+
+    setSkillMutationId(skill.id);
+    setError(null);
+
+    try {
+      await removeProjectSkill(project.id, skill.assignment_id);
+      setProject(await getProject(project.id));
+    } catch {
+      setError("Không xoá được skill khỏi project.");
+    } finally {
+      setSkillMutationId(null);
+    }
+  }
+
+  const assignableSkills = useMemo(() => {
+    const assignedSkillIds = new Set(project?.skills?.map((skill) => skill.id) ?? []);
+    return skillCatalog.filter((skill) => skill.enabled && !assignedSkillIds.has(skill.id));
+  }, [project?.skills, skillCatalog]);
+
   return (
     <ProjectPageFrame activeProjectId={projectId}>
       {error ? <ErrorNotice message={error} /> : null}
@@ -154,40 +202,20 @@ export default function ProjectDetail() {
 
           <div className="project-workspace-grid">
             <main className="project-workspace-main">
-              <section className="project-composer-card">
-                <Input.TextArea
-                  autoSize={{ minRows: 2, maxRows: 5 }}
-                  bordered={false}
-                  placeholder="Write a message..."
-                  value={taskMessage}
-                  onChange={(event) => setTaskMessage(event.target.value)}
-                  onPressEnter={(event) => {
-                    if (!event.shiftKey) {
-                      event.preventDefault();
-                      void handleStartTask();
-                    }
-                  }}
+              <div className="project-composer-standard">
+                <ChatComposer
+                  disabled={starting}
+                  message={taskMessage}
+                  model={selectedModel}
+                  modelOptions={MODEL_OPTIONS}
+                  sending={starting}
+                  uploadingDocument={uploadingDocument}
+                  onChange={setTaskMessage}
+                  onChangeModel={setSelectedModel}
+                  onSend={handleStartTask}
+                  onUploadDocument={handleUploadProjectDocument}
                 />
-                <div className="project-composer-footer">
-                  <Space>
-                    <Button type="text" icon={<PlusOutlined />} />
-                    <Segmented size="small" options={["Chat", "Cowork"]} defaultValue="Chat" />
-                  </Space>
-                  <Space>
-                    <Select
-                      size="small"
-                      bordered={false}
-                      value={selectedModel}
-                      options={MODEL_OPTIONS.map((model) => ({ label: model, value: model }))}
-                      onChange={setSelectedModel}
-                    />
-                    <Button type="text" icon={<AudioOutlined />} />
-                    <Button type="primary" loading={starting} disabled={!taskMessage.trim()} onClick={handleStartTask}>
-                      Start
-                    </Button>
-                  </Space>
-                </div>
-              </section>
+              </div>
 
               <div className="project-tabs-row">
                 <Segmented options={["Chats and tasks", "Activity"]} defaultValue="Chats and tasks" />
@@ -243,16 +271,43 @@ export default function ProjectDetail() {
               <section>
                 <div className="project-context-panel-header">
                   <Typography.Text strong>Skills</Typography.Text>
-                  <Typography.Text type="secondary">Theo thứ tự ưu tiên</Typography.Text>
+                  <Space.Compact>
+                    <Select
+                      size="small"
+                      className="project-skill-select"
+                      placeholder="Thêm skill"
+                      value={skillToAssign}
+                      options={assignableSkills.map((skill) => ({ label: skill.name, value: skill.id }))}
+                      onChange={setSkillToAssign}
+                    />
+                    <Button
+                      size="small"
+                      icon={<PlusOutlined />}
+                      loading={Boolean(skillToAssign && skillMutationId === skillToAssign)}
+                      disabled={!skillToAssign}
+                      onClick={handleAssignSkill}
+                    />
+                  </Space.Compact>
                 </div>
                 {project.skills?.length ? (
                   <div className="rag-document-list">
                     {project.skills.map((skill) => (
-                      <div className="rag-document-item" key={skill.id}>
-                        <span className="rag-document-title">{skill.name}</span>
-                        <span className="rag-document-meta">
-                          {skill.key} · priority {skill.priority}
-                        </span>
+                      <div className="rag-document-item skill-project-item" key={`${skill.id}-${skill.assignment_id || "fallback"}`}>
+                        <button className="skill-project-main" type="button" onClick={() => setSelectedSkill(skill)}>
+                          <span className="rag-document-title">{skill.name}</span>
+                          <span className="rag-document-meta">
+                            {skill.key} · {skill.scope || "system"} · priority {skill.priority}
+                          </span>
+                        </button>
+                        <Button
+                          size="small"
+                          type="text"
+                          icon={<DeleteOutlined />}
+                          title={skill.assignment_id ? "Xoá skill khỏi project" : "Skill mặc định không có assignment để xoá"}
+                          loading={skillMutationId === skill.id}
+                          disabled={!skill.assignment_id}
+                          onClick={() => handleRemoveSkill(skill)}
+                        />
                       </div>
                     ))}
                   </div>
@@ -311,7 +366,41 @@ export default function ProjectDetail() {
         onCancel={() => setEditing(false)}
         onSubmit={handleUpdateProject}
       />
+      <Modal
+        title={selectedSkill ? `${selectedSkill.name} skill` : "Skill"}
+        open={Boolean(selectedSkill)}
+        footer={null}
+        width={780}
+        onCancel={() => setSelectedSkill(null)}
+      >
+        {selectedSkill ? <SkillPromptPreview skill={selectedSkill} /> : null}
+      </Modal>
     </ProjectPageFrame>
+  );
+}
+
+function SkillPromptPreview({ skill }: { skill: AgentSkill }) {
+  const prompts = skill.prompts ?? {};
+  const entries = [
+    ["analysis", "Prompt phân tích"],
+    ["decider", "Prompt chọn action"],
+    ["answer", "Prompt trả lời"],
+    ["clarification", "Prompt hỏi làm rõ"],
+  ] as const;
+
+  return (
+    <div className="skill-preview">
+      <Typography.Paragraph type="secondary">
+        Scope: {skill.scope || "system"} · Key: {skill.key} · Priority: {skill.priority}
+      </Typography.Paragraph>
+      {skill.description ? <Typography.Paragraph>{skill.description}</Typography.Paragraph> : null}
+      {entries.map(([key, label]) => (
+        <section className="skill-preview-section" key={key}>
+          <Typography.Text strong>{label}</Typography.Text>
+          <pre className="skill-preview-code">{prompts[key] || "Chưa có prompt riêng cho bước này."}</pre>
+        </section>
+      ))}
+    </div>
   );
 }
 

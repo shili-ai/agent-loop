@@ -4,6 +4,8 @@ import type {
   AgentDocument,
   AgentProject,
   AgentSkill,
+  AgentSkillInput,
+  AgentSystemPrompt,
   NewConversationInput,
   NewProjectInput,
 } from "../types/agent";
@@ -42,6 +44,24 @@ export function listSkills() {
   return request<AgentSkill[]>("/api/agent_skills");
 }
 
+export function listSystemPrompts() {
+  return request<AgentSystemPrompt[]>("/api/agent_system_prompts");
+}
+
+export function createSkill(input: AgentSkillInput) {
+  return request<AgentSkill>("/api/agent_skills", {
+    method: "POST",
+    body: JSON.stringify({ agent_skill: input }),
+  });
+}
+
+export function updateSkill(id: number, input: AgentSkillInput) {
+  return request<AgentSkill>(`/api/agent_skills/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ agent_skill: input }),
+  });
+}
+
 export function getProject(id: number) {
   return request<AgentProject>(`/api/agent_projects/${id}`);
 }
@@ -57,6 +77,25 @@ export function updateProject(id: number, input: NewProjectInput) {
   return request<AgentProject>(`/api/agent_projects/${id}`, {
     method: "PATCH",
     body: JSON.stringify({ agent_project: input }),
+  });
+}
+
+export function assignProjectSkill(projectId: number, skillId: number, priority?: number) {
+  return request<AgentSkill>(`/api/agent_projects/${projectId}/skill_assignments`, {
+    method: "POST",
+    body: JSON.stringify({
+      agent_skill_assignment: {
+        agent_skill_id: skillId,
+        priority,
+        enabled: true,
+      },
+    }),
+  });
+}
+
+export function removeProjectSkill(projectId: number, assignmentId: number) {
+  return request<void>(`/api/agent_projects/${projectId}/skill_assignments/${assignmentId}`, {
+    method: "DELETE",
   });
 }
 

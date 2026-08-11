@@ -312,6 +312,7 @@ function stepMetadata(step: AgentStep) {
   if (step.kind === "llm") {
     addItem("Provider", data.provider);
     addItem("Model", data.model);
+    addItem("Prompt layers", promptLayerSummary(data.prompt_layers), true);
     addItem("Trạng thái", data.status);
     addItem("Thời gian", formatMs(data.total_duration_ms));
     addItem("Token đầu", formatMs(data.first_token_latency_ms));
@@ -322,6 +323,7 @@ function stepMetadata(step: AgentStep) {
     addItem("Action", data.action);
     addItem("Nguồn", data.source);
     addItem("Lý do", data.reason, true);
+    addItem("Prompt layers", promptLayerSummary(data.prompt_layers), true);
   }
 
   if (step.kind === "document_search" || step.kind === "web_search" || step.kind === "web_read") {
@@ -435,6 +437,23 @@ function asRecords(value: unknown): Record<string, unknown>[] {
 
 function asText(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+function promptLayerSummary(value: unknown) {
+  if (!value || typeof value !== "object") return "";
+  const record = value as { active_skills?: unknown; has_project_prompt?: unknown; has_chat_prompt?: unknown };
+  const skills = asRecords(record.active_skills)
+    .map((skill) => {
+      const name = asText(skill.name) || asText(skill.key);
+      const scope = asText(skill.scope);
+      return [name, scope ? `(${scope})` : ""].filter(Boolean).join(" ");
+    })
+    .filter(Boolean);
+  const bits = [];
+  if (skills.length) bits.push(`Skills: ${skills.join(", ")}`);
+  if (record.has_project_prompt) bits.push("Project prompt");
+  if (record.has_chat_prompt) bits.push("Chat prompt");
+  return bits.join(" · ");
 }
 
 function promptMessagesToText(messages: unknown[]) {

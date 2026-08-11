@@ -1,5 +1,6 @@
 import { CloseOutlined, CodeOutlined, DownloadOutlined, EyeOutlined, FolderOpenOutlined } from "@ant-design/icons";
 import { Empty, Flex, List, Spin, Tooltip } from "antd";
+import Link from "next/link";
 import { useState } from "react";
 import { pendingClarification } from "../../lib/clarification";
 import { triggerLibraryDownload, type LibraryItem } from "../../lib/conversationLibrary";
@@ -52,6 +53,7 @@ export default function AgentChatPanel({
 }: AgentChatPanelProps) {
   const clarificationQuestions = pendingClarification(latestRun);
   const projectTitle = conversation?.project?.title ?? activeProject?.title;
+  const projectId = conversation?.project?.id ?? activeProject?.id;
   const currentTitle = conversation?.title || (draft ? "Đoạn chat mới" : "Trợ lý presales");
   const [previewItem, setPreviewItem] = useState<LibraryItem | null>(null);
   const [previewMode, setPreviewMode] = useState<"preview" | "markdown">("preview");
@@ -73,10 +75,14 @@ export default function AgentChatPanel({
             <span className="chat-breadcrumb">
               {projectTitle ? (
                 <>
-                  <span className="chat-breadcrumb-project">
+                  <Link
+                    className="chat-breadcrumb-project"
+                    href={projectId ? `/projects/${projectId}` : "/projects"}
+                    title="Quay lại project"
+                  >
                     <FolderOpenOutlined />
                     {projectTitle}
-                  </span>
+                  </Link>
                   <span className="chat-breadcrumb-sep">/</span>
                 </>
               ) : null}

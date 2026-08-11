@@ -1,6 +1,6 @@
 "use client";
 
-import { PlusOutlined } from "@ant-design/icons";
+import { FolderOpenOutlined, PlusOutlined } from "@ant-design/icons";
 import { Button, ConfigProvider, Empty, Spin, Typography, theme } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -53,33 +53,47 @@ export default function ProjectDirectory() {
 
   return (
     <ProjectPageFrame>
-      <div className="project-page-header">
-        <Typography.Title level={2} className="project-page-title">
-          Projects
-        </Typography.Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
-          Tạo project
-        </Button>
+      <div className="project-directory-page">
+        <div className="project-directory-header">
+          <div className="project-directory-heading">
+            <FolderOpenOutlined className="project-directory-heading-icon" />
+            <Typography.Title level={2} className="project-page-title">
+              Projects
+            </Typography.Title>
+          </div>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
+            Tạo project
+          </Button>
+        </div>
+
+        {error ? <ErrorNotice message={error} /> : null}
+
+        {loading ? (
+          <div className="project-page-loading">
+            <Spin />
+          </div>
+        ) : projects.length ? (
+          <div className="project-card-grid">
+            {projects.map((project) => (
+              <Link href={`/projects/${project.id}`} key={project.id} className="project-card">
+                <div className="project-card-main">
+                  <div className="project-card-title">{project.title}</div>
+                  <div className="project-card-meta">
+                    {[project.customer_name, project.industry].filter(Boolean).join(" · ") || "Project"}
+                  </div>
+                </div>
+                <div className="project-card-footer">
+                  <span>{project.skills?.length || 0} skill</span>
+                  <span>{project.documents?.length || 0} tài liệu</span>
+                  <span>{formatDate(project.updated_at)}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <Empty description="Chưa có project" />
+        )}
       </div>
-
-      {error ? <ErrorNotice message={error} /> : null}
-
-      {loading ? (
-        <div className="project-page-loading">
-          <Spin />
-        </div>
-      ) : projects.length ? (
-        <div className="project-card-grid">
-          {projects.map((project) => (
-            <Link href={`/projects/${project.id}`} key={project.id} className="project-card">
-              <div className="project-card-title">{project.title}</div>
-              <div className="project-card-meta">{formatDate(project.updated_at)}</div>
-            </Link>
-          ))}
-        </div>
-      ) : (
-        <Empty description="Chưa có project" />
-      )}
 
       <ProjectModal
         mode="create"

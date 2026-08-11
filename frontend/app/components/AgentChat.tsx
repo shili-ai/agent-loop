@@ -21,7 +21,7 @@ import AgentChatPanel from "./organisms/AgentChatPanel";
 import AgentSidebar from "./organisms/AgentSidebar";
 import AgentChatTemplate from "./templates/AgentChatTemplate";
 
-const MODEL_OPTIONS = ["qwen3:8b", "llama3.2:3b", "gpt-oss:20b"];
+const MODEL_OPTIONS = ["llama3.2:3b", "llama3.1:8b", "qwen3:8b"];
 
 function conversationIdFromPath(pathname: string): number | null {
   const match = /^\/chat\/(\d+)/.exec(pathname);

@@ -144,6 +144,7 @@ module AgentLoop
           provider: "ollama",
           model: analyzer.client.model,
           prompt_messages: analyzer.prompt_messages,
+          prompt_layers: analyzer.prompt_layer_summary,
           output: nil,
           status: "running",
           request_started_at: Time.now.utc.iso8601(6)
@@ -155,13 +156,13 @@ module AgentLoop
       if analysis[:source] == "model"
         step.update!(
           summary: "#{initial_summary}\nModel #{analyzer.client.model} đã phân tích xong yêu cầu#{duration ? " (mất #{duration})" : ""}.",
-          data: result[:metrics].merge(prompt_messages: analyzer.prompt_messages, output: analysis[:output], raw: result[:raw], status: "completed")
+          data: result[:metrics].merge(prompt_messages: analyzer.prompt_messages, prompt_layers: analyzer.prompt_layer_summary, output: analysis[:output], raw: result[:raw], status: "completed")
         )
       else
         step.update!(
           title: "Fallback khi model phân tích lỗi",
           summary: "Model phân tích bị lỗi, dùng IntentClassifier và LoopPlanBuilder dự phòng.",
-          data: result[:metrics].merge(prompt_messages: analyzer.prompt_messages, output: analysis[:output], error: analysis[:error], status: "failed")
+          data: result[:metrics].merge(prompt_messages: analyzer.prompt_messages, prompt_layers: analyzer.prompt_layer_summary, output: analysis[:output], error: analysis[:error], status: "failed")
         )
       end
       analysis
@@ -396,6 +397,7 @@ module AgentLoop
           provider: "ollama",
           model: generator.client.model,
           prompt_messages: generator.prompt_messages,
+          prompt_layers: generator.prompt_layer_summary,
           output: nil,
           status: "running",
           request_started_at: Time.now.utc.iso8601(6)
@@ -406,14 +408,14 @@ module AgentLoop
       duration = format_duration(result.dig(:metrics, :total_duration_ms))
       step.update!(
         summary: "Model #{generator.client.model} đã soạn xong nội dung câu trả lời#{duration ? " (mất #{duration})" : ""}.",
-        data: result[:metrics].merge(prompt_messages: generator.prompt_messages, output: answer, status: "completed")
+        data: result[:metrics].merge(prompt_messages: generator.prompt_messages, prompt_layers: generator.prompt_layer_summary, output: answer, status: "completed")
       )
       answer
     rescue StandardError => e
       step&.update!(
         title: "Fallback khi model local lỗi",
         summary: "Model local bị lỗi, dùng bộ tổng hợp mặc định.",
-        data: { error: e.message, prompt_messages: generator&.prompt_messages, output: nil, status: "failed" }
+        data: { error: e.message, prompt_messages: generator&.prompt_messages, prompt_layers: generator&.prompt_layer_summary, output: nil, status: "failed" }
       )
       nil
     end

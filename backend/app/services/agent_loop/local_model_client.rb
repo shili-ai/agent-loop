@@ -6,7 +6,9 @@ require "uri"
 module AgentLoop
   class LocalModelClient
     DEFAULT_BASE_URL = "http://localhost:11434"
-    DEFAULT_MODEL = "qwen3:8b"
+    DEFAULT_MODEL = "llama3.2:3b"
+    DEFAULT_NUM_CTX = 4096
+    DEFAULT_NUM_PREDICT = 768
     DEFAULT_OPEN_TIMEOUT = 5
     DEFAULT_READ_TIMEOUT = 90
 
@@ -33,7 +35,9 @@ module AgentLoop
         messages: messages,
         stream: true,
         options: {
-          temperature: temperature
+          temperature: temperature,
+          num_ctx: ENV.fetch("OLLAMA_NUM_CTX", DEFAULT_NUM_CTX).to_i,
+          num_predict: ENV.fetch("OLLAMA_NUM_PREDICT", DEFAULT_NUM_PREDICT).to_i
         }
       }
       body[:format] = format if format
@@ -70,7 +74,7 @@ module AgentLoop
       end
 
       response = http.request(request) do |res|
-        raise "Ollama request failed: #{res.code} #{res.body}" unless res.is_a?(Net::HTTPSuccess)
+        raise ollama_error(res) unless res.is_a?(Net::HTTPSuccess)
 
         res.read_body do |chunk|
           buffer << chunk
@@ -114,6 +118,18 @@ module AgentLoop
 
     def monotonic_ms
       (Process.clock_gettime(Process::CLOCK_MONOTONIC) * 1000).round
+    end
+
+    def ollama_error(response)
+      parsed = JSON.parse(response.body)
+      message = parsed["error"].to_s.presence || response.body
+      if message.include?("llama-server process has terminated") || message.include?("signal: killed")
+        return "Ollama model #{@model} bị hệ điều hành dừng giữa chừng. Thường do thiếu RAM/VRAM hoặc prompt quá dài; hãy dùng llama3.2:3b, giảm OLLAMA_NUM_CTX/OLLAMA_NUM_PREDICT, hoặc đóng bớt app nặng."
+      end
+
+      "Ollama request failed: #{response.code} #{message}"
+    rescue JSON::ParserError
+      "Ollama request failed: #{response.code} #{response.body}"
     end
   end
 end

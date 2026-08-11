@@ -45,6 +45,40 @@ export type AgentSkill = {
   priority: number;
   assignment_id?: number | null;
   enabled: boolean;
+  scope?: "system" | "project" | "chat" | "custom";
+  prompts?: Partial<Record<"analysis" | "decider" | "answer" | "clarification", string>>;
+  tool_policy?: Record<string, unknown>;
+};
+
+export type AgentSkillInput = {
+  key: string;
+  name: string;
+  description?: string | null;
+  priority: number;
+  enabled: boolean;
+  analysis_prompt?: string | null;
+  decider_prompt?: string | null;
+  answer_prompt?: string | null;
+  clarification_prompt?: string | null;
+  tool_policy?: Record<string, unknown>;
+};
+
+export type AgentSystemPrompt = {
+  key: "analysis" | "decider" | "answer" | "clarification";
+  label: string;
+  base_system: string;
+  composed_system: string;
+  layers: {
+    purpose: string;
+    active_skills: Array<{
+      key: string;
+      name: string;
+      priority: number;
+      scope?: string;
+    }>;
+    has_project_prompt: boolean;
+    has_chat_prompt: boolean;
+  };
 };
 
 export type AgentProject = {

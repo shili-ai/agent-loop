@@ -32,7 +32,7 @@ module AgentLoop
     def prompt_layer_summary
       {
         purpose: @purpose,
-        active_skills: skills.map { |skill| skill.slice(:key, :name, :priority) },
+        active_skills: skills.map { |skill| skill.slice(:key, :name, :priority, :scope) },
         has_project_prompt: project_prompt.present?,
         has_chat_prompt: chat_prompt.present?
       }
