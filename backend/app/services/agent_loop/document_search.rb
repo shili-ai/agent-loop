@@ -9,16 +9,21 @@ module AgentLoop
     end
 
     def call
-      uploaded = uploaded_documents
-      drive = DriveDocumentSearch.new(query: @query, limit: @limit).call
+      uploaded_thread = Thread.new { uploaded_documents }
+      elasticsearch_thread = Thread.new { elasticsearch_documents }
+      drive_thread = Thread.new { DriveDocumentSearch.new(query: @query, limit: @limit).call }
 
-      merge_results(uploaded, drive).first(@limit)
+      merge_results(uploaded_thread.value, elasticsearch_thread.value, drive_thread.value).first(@limit)
     end
 
     private
 
     def merge_results(*groups)
       groups.flatten.compact.uniq { |document| document[:source].presence || [ document[:title], document[:snippet] ] }
+    end
+
+    def elasticsearch_documents
+      ElasticsearchDocumentStore.new.search(query: @query, conversation: @conversation, limit: @limit)
     end
 
     def uploaded_documents

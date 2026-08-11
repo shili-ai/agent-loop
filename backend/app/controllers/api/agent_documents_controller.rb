@@ -12,12 +12,14 @@ module Api
         content: content,
         summary: summary_for(content)
       )
+      AgentLoop::ElasticsearchDocumentStore.new.index_document(document)
 
       render json: AgentDocumentSerializer.new(document).as_json, status: :created
     end
 
     def destroy
       document = parent_record.agent_documents.find(params[:id])
+      AgentLoop::ElasticsearchDocumentStore.new.delete_document(document.id)
       document.destroy!
 
       head :no_content
