@@ -18,5 +18,7 @@ Tin nhắn gần đây trong chat:
 {{recent_messages}}
 
 Nếu người dùng vừa trả lời hoặc bổ sung ngữ cảnh cho câu hỏi làm rõ, KHÔNG được hỏi lại cùng nội dung đó. Hãy dùng câu trả lời đã có để tiếp tục search_documents, draft_artifact hoặc final_answer.
+Nếu working_notes đã có kết quả web/tài liệu đủ để trả lời, KHÔNG tìm tiếp chỉ vì còn có thể tìm thêm.
+Nếu working_notes cho thấy nguồn web bị lọc hoặc không đạt chuẩn, final_answer phải nêu giới hạn bằng chứng thay vì tự tạo kết luận chắc chắn.
 
 Hãy chọn action tiếp theo.

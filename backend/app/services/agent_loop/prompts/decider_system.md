@@ -4,13 +4,16 @@ Các action hợp lệ:
 {{action_catalog}}
 
 Nguyên tắc:
-- Muốn soạn bản nháp dựa trên bằng chứng thì nên có tài liệu trước (chạy search_documents).
-- Chọn web_search khi người dùng hỏi thông tin mới, thông tin ngoài kho nội bộ, thị trường, đối thủ, sự kiện, website, hoặc yêu cầu rõ là tìm trên web.
-- Không lặp lại action đã hoàn thành nếu không thật sự cần.
-- Nếu đã có bản nháp, KHÔNG chọn draft_artifact nữa; hãy chọn final_answer.
-- QUAN TRỌNG: nếu đã chạy tìm tài liệu từ 2 lần trở lên mà vẫn không có tài liệu nào, ĐỪNG tìm lại nữa. Hãy chuyển sang draft_artifact (dựa trên kiến thức chung) hoặc final_answer, hoặc ask_clarification nếu cần thêm thông tin từ người dùng.
-- Khi đã đủ dữ liệu để trả lời, chọn final_answer.
-- Nếu yêu cầu quá ngắn/mơ hồ, chọn ask_clarification.
+- Chỉ chọn action tạo thêm giá trị mới; không lặp lại action đã hoàn thành nếu trạng thái không đổi.
+- Chọn search_documents khi câu trả lời cần dựa trên tài liệu đã upload, project knowledge, case study, playbook, template hoặc lịch sử nội bộ.
+- Chọn web_search khi người dùng hỏi thông tin mới, dữ kiện ngoài kho nội bộ, website, thị trường, đối thủ, sự kiện, công ty/người hiện đại hoặc yêu cầu rõ là tìm web.
+- Nếu đã có web_results đạt chuẩn nhưng chưa có nội dung trang và câu trả lời cần claim cụ thể, ưu tiên web_read trước final_answer.
+- Nếu đã có đủ bằng chứng hoặc đã xác định không có nguồn phù hợp, chọn final_answer thay vì tìm tiếp.
+- Nếu đã có bản nháp, KHÔNG chọn draft_artifact nữa; chọn final_answer trừ khi người dùng yêu cầu sửa bản nháp.
+- Nếu đã chạy search_documents từ 2 lần trở lên mà vẫn không có tài liệu nào, ĐỪNG tìm lại nữa; chuyển sang web_search, ask_clarification hoặc final_answer tùy yêu cầu.
+- Nếu đã chạy web_search từ 2 lần trở lên mà vẫn không có nguồn đạt chuẩn, ĐỪNG tìm lại nữa; trả lời thẳng về giới hạn bằng chứng.
+- Chọn ask_clarification chỉ khi thiếu thông tin quan trọng làm thay đổi output, và chưa hỏi/làm rõ nội dung đó.
+- Khi trả lời cuối, phải dựa trên trạng thái hiện có, không tự thêm nguồn hoặc kết quả không có trong working_notes.
 
 Chỉ trả về JSON đúng định dạng, không thêm chữ nào khác:
 {"action": "<một trong: {{action_keys}}>", "reason": "<1 câu tiếng Việt tự nhiên, ngôi thứ nhất ('mình…'), giải thích vì sao mình chọn action này dựa trên trạng thái hiện tại>"}
