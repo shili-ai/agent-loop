@@ -1,7 +1,7 @@
 module Api
   class AgentConversationsController < ApplicationController
     def index
-      conversations = AgentConversation.order(updated_at: :desc)
+      conversations = AgentConversation.includes(:agent_runs).order(updated_at: :desc)
       conversations = conversations.where(agent_project_id: params[:agent_project_id]) if params[:agent_project_id].present?
       conversations = conversations.limit(20)
 
@@ -52,7 +52,7 @@ module Api
     end
 
     def summary(conversation)
-      latest_run = conversation.agent_runs.order(created_at: :desc).first
+      latest_run = latest_run_for(conversation)
       {
         id: conversation.id,
         agent_project_id: conversation.agent_project_id,
@@ -64,6 +64,14 @@ module Api
         running: latest_run&.status == "running",
         updated_at: conversation.updated_at
       }
+    end
+
+    def latest_run_for(conversation)
+      if conversation.association(:agent_runs).loaded?
+        conversation.agent_runs.max_by(&:created_at)
+      else
+        conversation.agent_runs.order(created_at: :desc).first
+      end
     end
   end
 end
