@@ -96,7 +96,8 @@ module AgentLoop
         bullets: artifact[:bullets],
         content: artifact[:content],
         sections: artifact[:sections],
-        sources: artifact[:sources]
+        sources: artifact[:sources],
+        files: Array(artifact[:files]).map { |file| file.slice(:title, :name, :mime) }
       }.compact
     end
 

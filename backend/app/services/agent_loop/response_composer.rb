@@ -70,6 +70,10 @@ module AgentLoop
       lines << "Mình đã tạo output theo đúng định dạng yêu cầu:"
       lines << ""
       lines << artifact[:content].to_s.strip
+      if artifact_files(artifact).any?
+        lines << ""
+        lines << "**Đầu ra:** #{artifact_files(artifact).map { |file| file[:name] || file['name'] }.compact.join(', ')}"
+      end
       evidence_lines = evidence_section_lines
       if evidence_lines.any?
         lines << ""
@@ -77,6 +81,10 @@ module AgentLoop
         lines.concat(evidence_lines)
       end
       lines.join("\n")
+    end
+
+    def artifact_files(artifact)
+      Array(artifact[:files] || artifact["files"])
     end
 
     def web_search_attempted?

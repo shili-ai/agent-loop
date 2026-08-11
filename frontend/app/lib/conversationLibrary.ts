@@ -72,15 +72,30 @@ function collectLibraryFromRuns(runs: AgentRun[]): ConversationLibrary {
       const artifactTitle = asString(artifact.title);
       const output = asString(data.output);
       if (artifactTitle && output) {
-        const bullets = asArray(artifact.bullets);
-        push(outputs, {
-          kind: "artifact",
-          title: `${artifactTitle}.md`,
-          detail: bullets.length ? `Tài liệu · ${bullets.length} ý` : "Tài liệu",
-          name: `${slugify(artifactTitle) || "ket-qua"}.md`,
-          content: output,
-          mime: "text/markdown;charset=utf-8",
-        });
+        const files = asArray(artifact.files).map(asRecord).filter((file) => asString(file.content));
+        if (files.length) {
+          files.forEach((file) => {
+            const name = asString(file.name) || `${slugify(asString(file.title) || artifactTitle) || "ket-qua"}.txt`;
+            push(outputs, {
+              kind: "artifact",
+              title: asString(file.title) || name,
+              detail: outputDetail(name, asString(file.mime)),
+              name,
+              content: asString(file.content),
+              mime: asString(file.mime) || mimeFromName(name),
+            });
+          });
+        } else {
+          const bullets = asArray(artifact.bullets);
+          push(outputs, {
+            kind: "artifact",
+            title: `${artifactTitle}.md`,
+            detail: bullets.length ? `Tài liệu · ${bullets.length} ý` : "Tài liệu",
+            name: `${slugify(artifactTitle) || "ket-qua"}.md`,
+            content: output,
+            mime: "text/markdown;charset=utf-8",
+          });
+        }
       }
 
       if (step.kind === "flow") {
@@ -109,6 +124,18 @@ function documentMarkdown(title: string, snippet: string, source: string) {
   if (snippet) lines.push("", snippet);
   if (source) lines.push("", `Nguồn: ${source}`);
   return `${lines.join("\n")}\n`;
+}
+
+function outputDetail(name: string, mime: string) {
+  if (mime.includes("csv") || name.toLowerCase().endsWith(".csv")) return "CSV · Bảng dữ liệu";
+  if (mime.includes("markdown") || name.toLowerCase().endsWith(".md")) return "Markdown";
+  return "Tài liệu";
+}
+
+function mimeFromName(name: string) {
+  if (name.toLowerCase().endsWith(".csv")) return "text/csv;charset=utf-8";
+  if (name.toLowerCase().endsWith(".md")) return "text/markdown;charset=utf-8";
+  return "text/plain;charset=utf-8";
 }
 
 export function triggerLibraryDownload(item: LibraryItem) {

@@ -1,3 +1,5 @@
+require "csv"
+
 module AgentLoop
   class ArtifactBuilder
     def initialize(intent:, documents:, message: nil)
@@ -17,7 +19,7 @@ module AgentLoop
     private
 
     def tool_name
-      return "markdown_table_builder" if table_request?
+      return "csv_table_builder" if table_request?
 
       case @intent
       when "battlecard" then "battlecard_builder"
@@ -58,7 +60,8 @@ module AgentLoop
         bullets: table_rows.map { |row| row[0] },
         content: table_content,
         sections: table_sections,
-        sources: source_titles
+        sources: source_titles,
+        files: [ csv_file ]
       }
     end
 
@@ -85,10 +88,34 @@ module AgentLoop
       end
     end
 
+    def csv_file
+      {
+        title: "#{table_title}.csv",
+        name: "#{table_filename}.csv",
+        mime: "text/csv;charset=utf-8",
+        content: csv_content
+      }
+    end
+
+    def csv_content
+      CSV.generate do |csv|
+        csv << [ "Item", "Feature", "Effort (Man-day)", "Remarks" ]
+        table_sections.each do |section|
+          csv << [ section[:item], section[:feature], section[:effort], section[:remarks] ]
+        end
+      end
+    end
+
     def table_title
       return "Estimate login Google bằng Rails" if normalized_message.match?(/login.*google|google.*login|dang nhap.*google|đăng nhập.*google/)
 
       "Bảng đề xuất"
+    end
+
+    def table_filename
+      return "estimate-login-google-rails" if normalized_message.match?(/login.*google|google.*login|dang nhap.*google|đăng nhập.*google/)
+
+      "bang-de-xuat"
     end
 
     def table_rows
@@ -176,6 +203,7 @@ module AgentLoop
 
     def table_request?
       normalized_message.match?(/\b(table|bang|bảng)\b/) ||
+        normalized_message.match?(/\bcsv\b/) ||
         normalized_message.include?("lập bảng") ||
         normalized_message.include?("lap bang")
     end

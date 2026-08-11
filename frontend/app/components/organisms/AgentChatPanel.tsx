@@ -1,7 +1,7 @@
 import { CloseOutlined, CodeOutlined, DownloadOutlined, EyeOutlined, FolderOpenOutlined } from "@ant-design/icons";
 import { Empty, Flex, List, Spin, Tooltip } from "antd";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { pendingClarification } from "../../lib/clarification";
 import { triggerLibraryDownload, type LibraryItem } from "../../lib/conversationLibrary";
 import type { AgentConversation, AgentMessage, AgentProject, AgentRun } from "../../types/agent";
@@ -56,10 +56,15 @@ export default function AgentChatPanel({
   const projectId = conversation?.project?.id ?? activeProject?.id;
   const currentTitle = conversation?.title || (draft ? "Đoạn chat mới" : "Trợ lý presales");
   const [previewItem, setPreviewItem] = useState<LibraryItem | null>(null);
-  const [previewMode, setPreviewMode] = useState<"preview" | "markdown">("preview");
+  const [previewMode, setPreviewMode] = useState<"preview" | "raw">("preview");
   const [previewScope, setPreviewScope] = useState<string | null>(null);
   const currentScope = draft ? "draft" : conversation?.id ? `conversation:${conversation.id}` : null;
   const activePreviewItem = previewScope === currentScope ? previewItem : null;
+  const chatItems = useMemo(() => (conversation ? buildChatItems(conversation, sending) : []), [conversation, sending]);
+  const tocItems = useMemo(
+    () => buildConversationToc(chatItems, projectTitle, currentTitle),
+    [chatItems, currentTitle, projectTitle]
+  );
 
   function openPreview(item: LibraryItem) {
     setPreviewMode("preview");
@@ -125,24 +130,31 @@ export default function AgentChatPanel({
                   <Spin />
                 </Flex>
               ) : conversation?.messages.length ? (
-                <div className="chat-thread">
+                <>
+                  {tocItems.length >= 2 ? <ChatTocRail items={tocItems} /> : null}
+                  <div className="chat-thread">
                   <List
                     split={false}
-                    dataSource={buildChatItems(conversation, sending)}
+                    dataSource={chatItems}
                     renderItem={(item) =>
-                      item.type === "message" ? (
-                        <MessageBubble message={item.message} />
-                      ) : (
-                        <InlineAgentRun
-                          finalAnswer={item.finalAnswer}
-                          pending={item.pending}
-                          run={item.run}
-                          onOpenLibraryItem={openPreview}
-                        />
+                      (
+                        <div id={anchorForChatItem(item)} className="chat-anchor">
+                          {item.type === "message" ? (
+                            <MessageBubble message={item.message} />
+                          ) : (
+                            <InlineAgentRun
+                              finalAnswer={item.finalAnswer}
+                              pending={item.pending}
+                              run={item.run}
+                              onOpenLibraryItem={openPreview}
+                            />
+                          )}
+                        </div>
                       )
                     }
                   />
-                </div>
+                  </div>
+                </>
               ) : (
                 <Flex justify="center" align="center" className="empty-state">
                   <Empty description={conversation ? "Gửi tin nhắn đầu tiên để chạy agent loop" : "Chọn hoặc tạo đoạn chat mới"} />
@@ -193,11 +205,11 @@ export default function AgentChatPanel({
                 </button>
                 <button
                   type="button"
-                  className={previewMode === "markdown" ? "library-preview-tab active" : "library-preview-tab"}
-                  aria-label="Markdown"
-                  onClick={() => setPreviewMode("markdown")}
+                  className={previewMode === "raw" ? "library-preview-tab active" : "library-preview-tab"}
+                  aria-label="Nội dung gốc"
+                  onClick={() => setPreviewMode("raw")}
                 >
-                  <Tooltip title="Markdown">
+                  <Tooltip title="Nội dung gốc">
                     <CodeOutlined />
                   </Tooltip>
                 </button>
@@ -217,7 +229,7 @@ export default function AgentChatPanel({
           <div className="library-preview-body">
             {activePreviewItem.content ? (
               previewMode === "preview" ? (
-                <MarkdownContent className="markdown-content library-preview-markdown">{activePreviewItem.content}</MarkdownContent>
+                <LibraryPreviewContent item={activePreviewItem} />
               ) : (
                 <pre className="library-preview-raw">{activePreviewItem.content}</pre>
               )
@@ -231,9 +243,160 @@ export default function AgentChatPanel({
   );
 }
 
+function ChatTocRail({ items }: { items: ChatTocItem[] }) {
+  const [activeAnchor, setActiveAnchor] = useState(items[0]?.anchor);
+
+  useEffect(() => {
+    const container = document.querySelector<HTMLElement>(".messages-scroll");
+    if (!container) return undefined;
+    const scrollContainer = container;
+    const animationFrame = window.requestAnimationFrame(updateActiveAnchor);
+
+    function updateActiveAnchor() {
+      const containerTop = scrollContainer.getBoundingClientRect().top;
+      const threshold = containerTop + 120;
+      let nextAnchor = items[0]?.anchor;
+
+      items.forEach((item) => {
+        const element = document.getElementById(item.anchor);
+        if (!element) return;
+        if (element.getBoundingClientRect().top <= threshold) {
+          nextAnchor = item.anchor;
+        }
+      });
+
+      setActiveAnchor(nextAnchor);
+    }
+
+    scrollContainer.addEventListener("scroll", updateActiveAnchor, { passive: true });
+    window.addEventListener("resize", updateActiveAnchor);
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      scrollContainer.removeEventListener("scroll", updateActiveAnchor);
+      window.removeEventListener("resize", updateActiveAnchor);
+    };
+  }, [items]);
+
+  function jumpTo(anchor: string) {
+    setActiveAnchor(anchor);
+    document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  return (
+    <nav className="chat-toc-rail" aria-label="Mục lục đoạn chat">
+      <div className="chat-toc-track" />
+      <div className="chat-toc-items">
+        {items.map((item, index) => (
+          <button
+            type="button"
+            key={item.anchor}
+            className={`chat-toc-marker ${item.tone}${item.anchor === activeAnchor ? " active" : ""}`}
+            aria-label={`Tới mục ${index + 1}: ${item.title}`}
+            onClick={() => jumpTo(item.anchor)}
+          >
+            <span className="chat-toc-card">
+              <span className="chat-toc-card-title">{item.title}</span>
+              <span className="chat-toc-card-meta">{item.meta}</span>
+              <span className="chat-toc-card-path">{item.path}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
+function LibraryPreviewContent({ item }: { item: LibraryItem }) {
+  if (isCsvItem(item)) return <CsvPreview content={item.content || ""} />;
+
+  return <MarkdownContent className="markdown-content library-preview-markdown">{item.content || ""}</MarkdownContent>;
+}
+
+function CsvPreview({ content }: { content: string }) {
+  const rows = parseCsv(content);
+  if (!rows.length) return <div className="library-preview-empty">Không có dữ liệu CSV để xem trước.</div>;
+
+  const [header, ...body] = rows;
+  return (
+    <div className="library-preview-csv">
+      <table>
+        <thead>
+          <tr>
+            {header.map((cell, index) => (
+              <th key={`${cell}-${index}`}>{cell}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {body.map((row, rowIndex) => (
+            <tr key={`row-${rowIndex}`}>
+              {header.map((_, cellIndex) => (
+                <td key={`cell-${rowIndex}-${cellIndex}`}>{row[cellIndex] || ""}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function isCsvItem(item: LibraryItem) {
+  return item.mime?.includes("csv") || item.name?.toLowerCase().endsWith(".csv") || item.title.toLowerCase().endsWith(".csv");
+}
+
+function parseCsv(content: string) {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+
+  for (let index = 0; index < content.length; index += 1) {
+    const char = content[index];
+    const next = content[index + 1];
+    if (quoted) {
+      if (char === "\"" && next === "\"") {
+        cell += "\"";
+        index += 1;
+      } else if (char === "\"") {
+        quoted = false;
+      } else {
+        cell += char;
+      }
+      continue;
+    }
+
+    if (char === "\"") {
+      quoted = true;
+    } else if (char === ",") {
+      row.push(cell);
+      cell = "";
+    } else if (char === "\n") {
+      row.push(cell);
+      if (row.some((value) => value.trim())) rows.push(row);
+      row = [];
+      cell = "";
+    } else if (char !== "\r") {
+      cell += char;
+    }
+  }
+
+  row.push(cell);
+  if (row.some((value) => value.trim())) rows.push(row);
+  return rows;
+}
+
 type ChatItem =
   | { key: string; type: "message"; message: AgentMessage }
   | { key: string; type: "run"; finalAnswer?: AgentMessage; pending?: boolean; run?: AgentRun };
+
+type ChatTocItem = {
+  anchor: string;
+  title: string;
+  meta: string;
+  path: string;
+  tone: "user" | "assistant" | "run";
+};
 
 function buildChatItems(conversation: AgentConversation, sending: boolean): ChatItem[] {
   const runsByUserMessageId = new Map(conversation.runs.map((run) => [run.user_message_id, run]));
@@ -270,4 +433,48 @@ function buildChatItems(conversation: AgentConversation, sending: boolean): Chat
   });
 
   return items;
+}
+
+function buildConversationToc(items: ChatItem[], projectTitle?: string, chatTitle?: string): ChatTocItem[] {
+  return items.map((item, index) => {
+    if (item.type === "message") {
+      const isUser = item.message.role === "user";
+      return {
+        anchor: anchorForChatItem(item),
+        title: truncateTocTitle(item.message.content || (isUser ? "Tin nhắn người dùng" : "Phản hồi")),
+        meta: isUser ? "Bạn đã hỏi" : "Trợ lý đã trả lời",
+        path: [projectTitle, chatTitle].filter(Boolean).join(" / "),
+        tone: isUser ? "user" : "assistant",
+      };
+    }
+
+    const status = item.pending ? "Đang chạy" : item.run?.status === "completed" ? "Đã xử lý" : item.run?.status || "Agent run";
+    const finalAnswer = item.finalAnswer?.content || answerFromRunForToc(item.run);
+    return {
+      anchor: anchorForChatItem(item),
+      title: truncateTocTitle(finalAnswer || `Bước xử lý #${index + 1}`),
+      meta: status,
+      path: [projectTitle, chatTitle].filter(Boolean).join(" / "),
+      tone: "run",
+    };
+  });
+}
+
+function anchorForChatItem(item: ChatItem) {
+  return item.type === "message" ? `chat-message-${item.message.id}` : `chat-run-${item.run?.id || "pending"}`;
+}
+
+function answerFromRunForToc(run?: AgentRun) {
+  const answerStep = run?.steps.find((step) => step.kind === "answer");
+  const output = answerStep?.data.output;
+  return typeof output === "string" ? output : undefined;
+}
+
+function truncateTocTitle(value: string, limit = 72) {
+  const text = value
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/[#*_`|>-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.length > limit ? `${text.slice(0, limit - 1)}…` : text || "Không có nội dung";
 }

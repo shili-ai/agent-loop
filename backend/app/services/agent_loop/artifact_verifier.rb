@@ -32,7 +32,8 @@ module AgentLoop
       [
         check("Đúng header bảng estimate", content.include?(ESTIMATE_HEADER), "Bảng estimate phải có 4 cột: Item, Feature, Effort (Man-day), Remarks."),
         check("Có ít nhất một dòng dữ liệu", table_data_rows.positive?, "Bảng cần có ít nhất một item estimate."),
-        check("Mỗi dòng đúng 4 cột", table_rows_have_four_columns?, "Mỗi dòng estimate phải có đúng 4 cột để render thành bảng.")
+        check("Mỗi dòng đúng 4 cột", table_rows_have_four_columns?, "Mỗi dòng estimate phải có đúng 4 cột để render thành bảng."),
+        check("Có file CSV đi kèm", csv_file_present?, "Output dạng bảng cần có file .csv để tải xuống/xem trước.")
       ]
     end
 
@@ -72,8 +73,17 @@ module AgentLoop
 
     def table_request?
       normalized_message.match?(/\b(table|bang|bảng)\b/) ||
+        normalized_message.match?(/\bcsv\b/) ||
         normalized_message.include?("lập bảng") ||
         normalized_message.include?("lap bang")
+    end
+
+    def csv_file_present?
+      Array(@artifact[:files]).any? do |file|
+        file[:name].to_s.end_with?(".csv") &&
+          file[:mime].to_s.include?("csv") &&
+          file[:content].to_s.include?("Item,Feature,Effort (Man-day),Remarks")
+      end
     end
 
     def normalized_message
