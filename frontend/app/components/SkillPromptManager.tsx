@@ -1,6 +1,6 @@
 "use client";
 
-import { PlusOutlined, SaveOutlined } from "@ant-design/icons";
+import { PlusOutlined, ReloadOutlined, SaveOutlined } from "@ant-design/icons";
 import { Button, Empty, Input, Segmented, Space, Switch, Typography } from "antd";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createSkill, listSkills, listSystemPrompts, updateSkill } from "../lib/agentApi";
@@ -66,21 +66,25 @@ export default function SkillPromptManager() {
     setError(null);
   }, []);
 
-  const reloadSkills = useCallback(async (selectId?: number) => {
+  const reloadCatalog = useCallback(async (selectId?: number) => {
     setLoading(true);
     setError(null);
 
     try {
-      const loadedSkills = await listSkills();
+      const [loadedSkills, loadedSystemPrompts] = await Promise.all([listSkills(), listSystemPrompts()]);
       setSkills(loadedSkills);
+      setSystemPrompts(loadedSystemPrompts);
       const next = selectId ? loadedSkills.find((skill) => skill.id === selectId) : loadedSkills[0];
       if (next) selectSkill(next);
+      if (loadedSystemPrompts[0] && !loadedSystemPrompts.some((prompt) => prompt.key === systemPromptKey)) {
+        setSystemPromptKey(loadedSystemPrompts[0].key);
+      }
     } catch {
-      setError("Không tải được danh sách skill. Kiểm tra Rails API.");
+      setError("Không tải được danh sách skill/prompt. Kiểm tra Rails API.");
     } finally {
       setLoading(false);
     }
-  }, [selectSkill]);
+  }, [selectSkill, systemPromptKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,7 +141,7 @@ export default function SkillPromptManager() {
 
     try {
       const saved = selectedId === "new" || selectedId === null ? await createSkill(payload) : await updateSkill(selectedId, payload);
-      await reloadSkills(saved.id);
+      await reloadCatalog(saved.id);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Không lưu được skill.");
     } finally {
@@ -205,9 +209,14 @@ export default function SkillPromptManager() {
               </button>
             </div>
           </div>
-          <Button type="primary" icon={<PlusOutlined />} onClick={startNewSkill}>
-            Skill mới
-          </Button>
+          <Space>
+            <Button icon={<ReloadOutlined />} onClick={() => reloadCatalog(selectedId === "new" ? undefined : selectedId ?? undefined)}>
+              Làm mới
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={startNewSkill}>
+              Skill mới
+            </Button>
+          </Space>
         </div>
 
         {error ? <ErrorNotice message={error} /> : null}
