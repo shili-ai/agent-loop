@@ -4,13 +4,23 @@ import {
   CheckCircleOutlined,
   CloudOutlined,
   DatabaseOutlined,
+  DisconnectOutlined,
+  LoginOutlined,
   ReloadOutlined,
   SaveOutlined,
+  SyncOutlined,
   WarningOutlined,
 } from "@ant-design/icons";
 import { Button, Input, Spin, Switch, Typography } from "antd";
 import { useEffect, useMemo, useState } from "react";
-import { listConnectors, testConnector, updateConnector } from "../lib/agentApi";
+import {
+  connectGoogleDrive,
+  disconnectGoogleDrive,
+  listConnectors,
+  syncGoogleDrive,
+  testConnector,
+  updateConnector,
+} from "../lib/agentApi";
 import type { AgentConnector } from "../types/agent";
 import ErrorNotice from "./atoms/ErrorNotice";
 import { ProjectPageFrame } from "./ProjectDirectory";
@@ -23,6 +33,10 @@ export default function ConnectorManager() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const selected = useMemo(
     () => connectors.find((connector) => connector.key === selectedKey) ?? connectors[0] ?? null,
@@ -31,6 +45,9 @@ export default function ConnectorManager() {
 
   useEffect(() => {
     void load();
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("connected") === "1") setNotice("Google Drive đã kết nối trên trình duyệt. Bạn có thể bấm Sync Drive để tạo index.");
+    if (params.get("error")) setError(params.get("error"));
   }, []);
 
   useEffect(() => {
@@ -45,6 +62,7 @@ export default function ConnectorManager() {
   async function load() {
     setLoading(true);
     setError(null);
+    setNotice(null);
 
     try {
       const items = await listConnectors();
@@ -70,6 +88,53 @@ export default function ConnectorManager() {
       setError("Không lưu được cấu hình connector.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function connectInBrowser() {
+    setConnecting(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const { auth_url } = await connectGoogleDrive();
+      window.location.href = auth_url;
+    } catch {
+      setError("Không tạo được link kết nối Google Drive. Kiểm tra GOOGLE_DRIVE_CLIENT_ID và GOOGLE_DRIVE_CLIENT_SECRET.");
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  async function syncDrive() {
+    setSyncing(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const updated = await syncGoogleDrive();
+      replaceConnector(updated);
+      setNotice(updated.message || "Đã sync Google Drive.");
+    } catch {
+      setError("Không sync được Google Drive. Hãy kết nối lại hoặc kiểm tra quyền Drive readonly.");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function disconnectDrive() {
+    setDisconnecting(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const updated = await disconnectGoogleDrive();
+      replaceConnector(updated);
+      setNotice("Đã ngắt kết nối Google Drive trên máy local.");
+    } catch {
+      setError("Không ngắt được Google Drive.");
+    } finally {
+      setDisconnecting(false);
     }
   }
 
@@ -109,6 +174,7 @@ export default function ConnectorManager() {
         </div>
 
         {error ? <ErrorNotice message={error} /> : null}
+        {notice ? <div className="connector-success">{notice}</div> : null}
 
         {loading ? (
           <div className="project-page-loading">
@@ -150,6 +216,44 @@ export default function ConnectorManager() {
               </div>
 
               <div className="connector-form">
+                <div className="connector-oauth-panel">
+                  <div>
+                    <div className="connector-oauth-title">Kết nối trên trình duyệt</div>
+                    <div className="connector-oauth-copy">
+                      {selected.auth_url_available
+                        ? "OAuth đã sẵn sàng. Bấm kết nối để cấp quyền Drive readonly, sau đó sync thành index."
+                        : "Cần cấu hình GOOGLE_DRIVE_CLIENT_ID và GOOGLE_DRIVE_CLIENT_SECRET ở Rails env trước."}
+                    </div>
+                  </div>
+                  <div className="connector-oauth-actions">
+                    <Button
+                      type="primary"
+                      icon={<LoginOutlined />}
+                      loading={connecting}
+                      disabled={!selected.auth_url_available}
+                      onClick={connectInBrowser}
+                    >
+                      Kết nối Google Drive
+                    </Button>
+                    <Button
+                      icon={<SyncOutlined />}
+                      loading={syncing}
+                      disabled={!selected.browser_connected}
+                      onClick={syncDrive}
+                    >
+                      Sync Drive
+                    </Button>
+                    <Button
+                      icon={<DisconnectOutlined />}
+                      loading={disconnecting}
+                      disabled={!selected.browser_connected}
+                      onClick={disconnectDrive}
+                    >
+                      Ngắt
+                    </Button>
+                  </div>
+                </div>
+
                 <label className="connector-field compact">
                   <span>Bật connector</span>
                   <Switch
@@ -183,6 +287,10 @@ export default function ConnectorManager() {
                   <strong>{selected.document_count ?? 0}</strong>
                 </div>
                 <div className="connector-status-row">
+                  <span>Trình duyệt</span>
+                  <strong>{selected.browser_connected ? "Đã cấp quyền" : "Chưa kết nối"}</strong>
+                </div>
+                <div className="connector-status-row">
                   <span>Lần kiểm tra gần nhất</span>
                   <strong>{formatDateTime(selected.last_checked_at)}</strong>
                 </div>
@@ -190,8 +298,8 @@ export default function ConnectorManager() {
               </div>
 
               <div className="connector-note">
-                <strong>Cách dùng:</strong> sync tài liệu Google Drive qua MCP hoặc script riêng thành file JSON tại path trên.
-                Khi chat, agent sẽ tìm song song tài liệu upload, project documents và Drive index.
+                <strong>Cách dùng:</strong> bấm kết nối Google Drive trên trình duyệt, cấp quyền readonly, rồi bấm Sync Drive.
+                Agent sẽ tìm song song tài liệu upload, project documents và Drive index khi chat.
               </div>
             </section>
           </div>

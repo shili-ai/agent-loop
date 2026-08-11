@@ -15,6 +15,8 @@ module AgentLoop
         status: "not_configured",
         index_path: DriveDocumentSearch::DEFAULT_INDEX_PATH,
         document_count: 0,
+        browser_connected: false,
+        auth_url_available: false,
         last_checked_at: nil,
         message: "Chưa cấu hình đường dẫn index Drive."
       }
@@ -26,7 +28,7 @@ module AgentLoop
       end
 
       def find(key)
-        stored = config.fetch(key, {})
+        stored = config.fetch(key.to_s, {}).deep_symbolize_keys
         connector = DEFAULT_CONNECTORS.fetch(key).merge(default_runtime_config(key)).merge(stored)
         refresh_status(connector)
       end
@@ -35,8 +37,8 @@ module AgentLoop
         raise KeyError, "Unknown connector: #{key}" unless DEFAULT_CONNECTORS.key?(key)
 
         payload = config
-        current = payload.fetch(key, {})
-        payload[key] = current.merge(normalize_attributes(attributes))
+        current = payload.fetch(key.to_s, {})
+        payload[key.to_s] = current.merge(normalize_attributes(attributes).stringify_keys)
         write_config(payload)
         find(key)
       end
@@ -50,7 +52,7 @@ module AgentLoop
 
       def google_drive_enabled?
         stored = config.fetch(GOOGLE_DRIVE_KEY, {})
-        return ActiveModel::Type::Boolean.new.cast(stored[:enabled]) if stored.key?(:enabled)
+        return ActiveModel::Type::Boolean.new.cast(stored["enabled"]) if stored.key?("enabled")
 
         default_runtime_config(GOOGLE_DRIVE_KEY)[:enabled]
       end
@@ -65,7 +67,7 @@ module AgentLoop
       def config
         return {} unless File.exist?(CONFIG_PATH)
 
-        JSON.parse(File.read(CONFIG_PATH), symbolize_names: true)
+        JSON.parse(File.read(CONFIG_PATH))
       rescue JSON::ParserError
         {}
       end
@@ -83,17 +85,37 @@ module AgentLoop
 
       def write_config(payload)
         FileUtils.mkdir_p(File.dirname(CONFIG_PATH))
-        File.write(CONFIG_PATH, JSON.pretty_generate(payload))
+        File.write(CONFIG_PATH, JSON.pretty_generate(compact_nil_values(payload)))
       end
 
       def normalize_attributes(attributes)
-        attrs = attributes.to_h.symbolize_keys.slice(:enabled, :index_path)
+        attrs = attributes.to_h.symbolize_keys.slice(:enabled, :index_path, :oauth_state)
         attrs[:enabled] = ActiveModel::Type::Boolean.new.cast(attrs[:enabled]) if attrs.key?(:enabled)
         attrs[:index_path] = attrs[:index_path].to_s.strip if attrs.key?(:index_path)
-        attrs.compact
+        attrs.compact.tap do |normalized|
+          normalized[:oauth_state] = attrs[:oauth_state] if attrs.key?(:oauth_state)
+        end
+      end
+
+      def compact_nil_values(value)
+        case value
+        when Hash
+          value.each_with_object({}) do |(key, item), output|
+            compacted = compact_nil_values(item)
+            output[key] = compacted unless compacted.nil?
+          end
+        when Array
+          value.filter_map { |item| compact_nil_values(item) }
+        else
+          value
+        end
       end
 
       def refresh_status(connector)
+        connector = connector.merge(
+          browser_connected: GoogleDriveConnector.connected?,
+          auth_url_available: GoogleDriveConnector.configured?
+        )
         return connector.merge(status: "disabled", document_count: 0, message: "Connector đang tắt.") unless connector[:enabled]
 
         test_index(connector)

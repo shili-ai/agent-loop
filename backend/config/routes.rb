@@ -3,6 +3,10 @@ Rails.application.routes.draw do
     resources :agent_skills, only: [ :index, :create, :update ]
     resources :agent_connectors, param: :key, only: [ :index, :show, :update ] do
       post :test, on: :member
+      post :connect, on: :member
+      post :sync, on: :member
+      delete :disconnect, on: :member
+      get :callback, on: :member
     end
     resources :agent_system_prompts, only: [ :index ]
     resources :agent_projects, only: [ :index, :show, :create, :update ] do

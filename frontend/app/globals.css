@@ -2434,6 +2434,47 @@ body {
   max-width: 880px;
 }
 
+.connector-oauth-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #eff6ff;
+  padding: 14px;
+}
+
+.connector-oauth-title {
+  color: #111827;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.connector-oauth-copy {
+  margin-top: 4px;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.connector-oauth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.connector-success {
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  background: #f0fdf4;
+  padding: 10px 12px;
+  color: #166534;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .connector-field {
   display: grid;
   gap: 8px;

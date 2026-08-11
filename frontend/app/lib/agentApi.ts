@@ -67,6 +67,24 @@ export function testConnector(key: string) {
   });
 }
 
+export function connectGoogleDrive() {
+  return request<{ auth_url: string }>("/api/agent_connectors/google_drive/connect", {
+    method: "POST",
+  });
+}
+
+export function syncGoogleDrive() {
+  return request<AgentConnector>("/api/agent_connectors/google_drive/sync", {
+    method: "POST",
+  });
+}
+
+export function disconnectGoogleDrive() {
+  return request<AgentConnector>("/api/agent_connectors/google_drive/disconnect", {
+    method: "DELETE",
+  });
+}
+
 export function createSkill(input: AgentSkillInput) {
   return request<AgentSkill>("/api/agent_skills", {
     method: "POST",

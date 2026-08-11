@@ -88,6 +88,8 @@ export type AgentConnector = {
   enabled: boolean;
   status: "connected" | "disabled" | "missing_index" | "invalid_index" | "not_configured" | string;
   index_path?: string;
+  browser_connected?: boolean;
+  auth_url_available?: boolean;
   document_count?: number;
   last_checked_at?: string | null;
   message?: string;
