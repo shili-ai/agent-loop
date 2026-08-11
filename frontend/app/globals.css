@@ -2171,6 +2171,36 @@ body {
   gap: 8px !important;
 }
 
+.conversation-running-dot {
+  position: relative;
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #1677ff;
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.12);
+}
+
+.conversation-running-dot::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+  border: 1px solid rgba(22, 119, 255, 0.35);
+  animation: running-dot-pulse 1.4s ease-out infinite;
+}
+
+@keyframes running-dot-pulse {
+  0% {
+    opacity: 0.7;
+    transform: scale(0.65);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
 .conversation-title {
   max-width: 150px;
   color: #1f1f1f;

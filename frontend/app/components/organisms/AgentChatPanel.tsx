@@ -23,10 +23,12 @@ type AgentChatPanelProps = {
   model: string;
   modelOptions: string[];
   sending: boolean;
+  running?: boolean;
   uploadingDocument?: boolean;
   onChangeMessage: (message: string) => void;
   onChangeModel: (model: string) => void;
   onSend: () => void;
+  onCancel?: () => void;
   onClarify: (text: string) => void;
   onDelete: () => void;
   onUploadDocument?: (file: File) => void;
@@ -43,10 +45,12 @@ export default function AgentChatPanel({
   model,
   modelOptions,
   sending,
+  running = false,
   uploadingDocument = false,
   onChangeMessage,
   onChangeModel,
   onSend,
+  onCancel,
   onClarify,
   onDelete,
   onUploadDocument,
@@ -114,10 +118,12 @@ export default function AgentChatPanel({
                 model={model}
                 modelOptions={modelOptions}
                 sending={sending}
+                running={running}
                 uploadingDocument={uploadingDocument}
                 onChange={onChangeMessage}
                 onChangeModel={onChangeModel}
                 onSend={onSend}
+                onCancel={onCancel}
                 onUploadDocument={onUploadDocument}
               />
             </div>
@@ -174,10 +180,12 @@ export default function AgentChatPanel({
               model={model}
               modelOptions={modelOptions}
               sending={sending}
+              running={running}
               uploadingDocument={uploadingDocument}
               onChange={onChangeMessage}
               onChangeModel={onChangeModel}
               onSend={onSend}
+              onCancel={onCancel}
               onUploadDocument={onUploadDocument}
             />
           </>

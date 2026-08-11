@@ -1,4 +1,4 @@
-import { ArrowUpOutlined, CloudOutlined, DatabaseOutlined, FileAddOutlined, PlusOutlined } from "@ant-design/icons";
+import { ArrowUpOutlined, CloudOutlined, DatabaseOutlined, FileAddOutlined, PlusOutlined, StopOutlined } from "@ant-design/icons";
 import { Dropdown } from "antd";
 import { useRef } from "react";
 
@@ -8,10 +8,12 @@ type ChatComposerProps = {
   model: string;
   modelOptions: string[];
   sending: boolean;
+  running?: boolean;
   uploadingDocument?: boolean;
   onChange: (message: string) => void;
   onChangeModel: (model: string) => void;
   onSend: () => void;
+  onCancel?: () => void;
   onUploadDocument?: (file: File) => void;
 };
 
@@ -21,13 +23,16 @@ export default function ChatComposer({
   model,
   modelOptions,
   sending,
+  running = false,
   uploadingDocument = false,
   onChange,
   onChangeModel,
   onSend,
+  onCancel,
   onUploadDocument,
 }: ChatComposerProps) {
   const canSend = Boolean(message.trim()) && !disabled;
+  const canCancel = running && Boolean(onCancel);
   const canUpload = Boolean(onUploadDocument) && !uploadingDocument;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const addMenu = {
@@ -112,12 +117,18 @@ export default function ChatComposer({
           ))}
         </select>
         <button
-          type="submit"
-          className={canSend || sending ? "composer-send active" : "composer-send"}
-          disabled={!canSend}
-          aria-label="Gửi"
+          type={canCancel ? "button" : "submit"}
+          className={canSend || sending || canCancel ? "composer-send active" : "composer-send"}
+          disabled={canCancel ? false : !canSend}
+          aria-label={canCancel ? "Huỷ lượt chạy" : "Gửi"}
+          title={canCancel ? "Huỷ lượt chạy" : "Gửi"}
+          onClick={(event) => {
+            if (!canCancel) return;
+            event.preventDefault();
+            onCancel?.();
+          }}
         >
-          <ArrowUpOutlined spin={sending} />
+          {canCancel ? <StopOutlined /> : <ArrowUpOutlined spin={sending} />}
         </button>
       </form>
     </div>

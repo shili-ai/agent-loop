@@ -13,6 +13,7 @@ Rails.application.routes.draw do
       resources :skill_assignments, only: [ :create, :destroy ], controller: :agent_skill_assignments
     end
     resources :agent_conversations, only: [ :index, :show, :create, :destroy ] do
+      post :cancel, on: :member
       resources :documents, only: [ :create, :destroy ], controller: :agent_documents
       resources :skill_assignments, only: [ :create, :destroy ], controller: :agent_skill_assignments
       resources :messages, only: [ :create ], module: :agent_conversations

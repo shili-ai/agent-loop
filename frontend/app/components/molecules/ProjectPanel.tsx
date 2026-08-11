@@ -47,6 +47,7 @@ export default function ProjectPanel({
       key={conversation.id}
       onClick={() => onSelectConversation(conversation.id)}
     >
+      {conversation.running ? <span className="conversation-running-dot" title="Đang chạy" /> : null}
       <Typography.Text ellipsis className="project-chat-tree-title">
         {conversation.title}
       </Typography.Text>

@@ -4,6 +4,7 @@ require "securerandom"
 module AgentLoop
   class Runner
     MAX_ITERATIONS = 20
+    class CancelledRunError < StandardError; end
 
     def self.enqueue(conversation:, content:, model: nil)
       user_message = conversation.agent_messages.create!(role: "user", content: content)
@@ -39,8 +40,10 @@ module AgentLoop
         context_summary(context),
         context.merge(output: ContextNoteBuilder.new(context: context).call)
       )
+      check_cancelled!(run)
 
       analysis = build_model_analysis(run, request_content, context)
+      check_cancelled!(run)
       intent = analysis[:intent]
       run.update!(intent: intent)
       create_step(
@@ -64,6 +67,7 @@ module AgentLoop
         "Mình dự định lần lượt: #{plan_actions}. Mục tiêu: #{plan[:goal]}",
         plan.merge(source: analysis[:source])
       )
+      check_cancelled!(run)
 
       state = {
         documents: [],
@@ -91,9 +95,12 @@ module AgentLoop
         planned_actions: Array(plan[:actions])
       )
       run_broad_retrieval_after_plan(run, state, plan, request_content, context)
+      check_cancelled!(run)
       loop_result = run_dynamic_loop(run, intent, state, plan, request_content, context)
+      check_cancelled!(run)
       tool_result = build_tool_result(state)
       model_answer = loop_result[:action] == "final_answer" ? generate_model_answer(run, intent, tool_result, context, request_content) : nil
+      check_cancelled!(run)
       answer = ResponseComposer.new(
         intent: intent,
         tool_result: tool_result,
@@ -119,6 +126,9 @@ module AgentLoop
         RunFlowBuilder.new(run: run).call
       )
 
+      run
+    rescue CancelledRunError
+      run&.update!(status: "cancelled") if run&.status != "cancelled"
       run
     rescue StandardError => e
       run&.update!(status: "failed")
@@ -183,6 +193,7 @@ module AgentLoop
 
     def run_dynamic_loop(run, intent, state, plan, message, context)
       MAX_ITERATIONS.times do |index|
+        check_cancelled!(run)
         iteration = index + 1
         decision = ModelActionDecider.new(
           intent: intent,
@@ -201,10 +212,12 @@ module AgentLoop
           decision_summary(decision, iteration),
           decision.merge(iteration: iteration)
         )
+        check_cancelled!(run)
 
         return decision if decision[:action] == "final_answer"
 
         execute_action(run, intent, state, decision[:action], message, context)
+        check_cancelled!(run)
         return decision if decision[:action] == "ask_clarification"
       end
 
@@ -590,6 +603,10 @@ module AgentLoop
     def create_run
       user_message = @conversation.agent_messages.create!(role: "user", content: @content)
       @conversation.agent_runs.create!(user_message: user_message, status: "running")
+    end
+
+    def check_cancelled!(run)
+      raise CancelledRunError if run.reload.status == "cancelled"
     end
 
     def generate_model_answer(run, intent, tool_result, context, request_content)

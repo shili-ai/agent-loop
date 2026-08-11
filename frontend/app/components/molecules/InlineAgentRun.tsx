@@ -64,6 +64,7 @@ export default function InlineAgentRun({ finalAnswer, onOpenLibraryItem, pending
 
 function runLabel(run: AgentRun | undefined, running: boolean, stepCount: number) {
   if (running) return stepCount ? `Đang suy luận… (${stepCount} bước)` : "Đang suy luận…";
+  if (run?.status === "cancelled") return stepCount ? `Đã huỷ sau ${stepCount} bước` : "Đã huỷ lượt chạy";
   if (run?.status === "failed") return `Đã dừng sau ${stepCount} bước suy luận`;
   if (run) return stepCount ? `Đã suy luận qua ${stepCount} bước` : "Đã suy luận";
   return "Đã suy luận";

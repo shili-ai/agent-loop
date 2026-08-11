@@ -1,5 +1,5 @@
 class AgentRun < ApplicationRecord
-  STATUSES = %w[running completed failed].freeze
+  STATUSES = %w[running completed failed cancelled].freeze
 
   belongs_to :agent_conversation
   belongs_to :user_message, class_name: "AgentMessage"

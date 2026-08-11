@@ -58,6 +58,7 @@ export default function ConversationList({
             >
               <Space align="center" className="conversation-title-row">
                 <MessageOutlined />
+                {conversation.running ? <span className="conversation-running-dot" title="Đang chạy" /> : null}
                 <Typography.Text ellipsis className="conversation-title">
                   {conversation.title}
                 </Typography.Text>

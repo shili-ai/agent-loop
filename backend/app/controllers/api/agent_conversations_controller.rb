@@ -29,6 +29,22 @@ module Api
       head :no_content
     end
 
+    def cancel
+      conversation = AgentConversation.find(params[:id])
+      conversation.agent_runs.where(status: "running").find_each do |run|
+        run.update!(status: "cancelled")
+        run.agent_steps.create!(
+          position: run.agent_steps.count + 1,
+          kind: "cancelled",
+          title: "Đã huỷ",
+          summary: "Người dùng đã huỷ lượt chạy này.",
+          data: { output: "Người dùng đã huỷ lượt chạy này.", status: "cancelled" }
+        )
+      end
+
+      render json: AgentConversationSerializer.new(conversation.reload).as_json
+    end
+
     private
 
     def conversation_params
@@ -36,6 +52,7 @@ module Api
     end
 
     def summary(conversation)
+      latest_run = conversation.agent_runs.order(created_at: :desc).first
       {
         id: conversation.id,
         agent_project_id: conversation.agent_project_id,
@@ -43,6 +60,8 @@ module Api
         industry: conversation.industry,
         customer_name: conversation.customer_name,
         instructions: conversation.instructions,
+        latest_run_status: latest_run&.status,
+        running: latest_run&.status == "running",
         updated_at: conversation.updated_at
       }
     end

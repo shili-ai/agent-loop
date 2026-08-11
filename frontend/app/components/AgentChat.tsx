@@ -3,6 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  cancelConversation,
   createConversation,
   deleteConversation,
   getConversation,
@@ -28,10 +29,19 @@ const MODEL_OPTIONS = [
   "deepseek:deepseek-v4-flash",
   "deepseek:deepseek-v4-pro",
 ];
+const ACTIVE_POLL_MS = 1500;
+const IDLE_POLL_MS = 8000;
+const HIDDEN_TAB_POLL_MS = 15000;
 
 function conversationIdFromPath(pathname: string): number | null {
   const match = /^\/chat\/(\d+)/.exec(pathname);
   return match ? Number(match[1]) : null;
+}
+
+function conversationProgressSignature(conversation: AgentConversation) {
+  return conversation.runs
+    .map((run) => `${run.id}:${run.status}:${run.steps.length}:${run.assistant_message_id ?? ""}`)
+    .join("|");
 }
 
 export default function AgentChat() {
@@ -48,6 +58,7 @@ export default function AgentChat() {
   const optimisticMessageId = useRef(-1);
   const projectsRef = useRef<AgentProject[]>([]);
   const loadedKeyRef = useRef<number | string | null>(null);
+  const latestConversationSignatureRef = useRef("");
 
   const [activeProjectConversations, setActiveProjectConversations] = useState<AgentConversationSummary[]>([]);
   const [activeProject, setActiveProject] = useState<AgentProject | null>(null);
@@ -64,6 +75,7 @@ export default function AgentChat() {
   const [error, setError] = useState<string | null>(null);
 
   const latestRun = useMemo(() => conversation?.runs.at(-1), [conversation]);
+  const openConversationId = conversation?.id;
   const hasRunningRun = useMemo(
     () => Boolean(conversation?.runs.some((run) => run.status === "running")),
     [conversation]
@@ -73,6 +85,10 @@ export default function AgentChat() {
   useEffect(() => {
     projectsRef.current = projects;
   }, [projects]);
+
+  useEffect(() => {
+    latestConversationSignatureRef.current = conversation ? conversationProgressSignature(conversation) : "";
+  }, [conversation]);
 
   const refreshConversationList = useCallback(async (projectId?: number) => {
     const items = await listConversations(projectId);
@@ -158,26 +174,57 @@ export default function AgentChat() {
     void loadConversation(routeConversationId);
   }, [ready, routeConversationId, draftProjectId, applyDraft, loadConversation]);
 
-  // Poll while a run is in progress; refresh lists when it finishes.
+  // Poll while a run is in progress. Back off when nothing changes so an old
+  // running job cannot hammer the local Rails server forever.
   useEffect(() => {
-    if (!conversation || !hasRunningRun) return;
+    if (!openConversationId || !hasRunningRun) return;
 
-    const conversationId = conversation.id;
-    const interval = window.setInterval(async () => {
+    const conversationId = openConversationId;
+    let cancelled = false;
+    let timeoutId: number | undefined;
+    let lastSignature = latestConversationSignatureRef.current;
+    let unchangedPolls = 0;
+    const controller = new AbortController();
+
+    async function poll() {
       try {
-        const updated = await getConversation(conversationId);
+        const updated = await getConversation(conversationId, { signal: controller.signal });
+        if (cancelled) return;
+
         setConversation((current) => (current?.id === conversationId ? updated : current));
+        const signature = conversationProgressSignature(updated);
+        unchangedPolls = signature === lastSignature ? unchangedPolls + 1 : 0;
+        lastSignature = signature;
+
         if (!updated.runs.some((run) => run.status === "running")) {
           void refreshConversationList(updated.agent_project_id ?? undefined);
           void refreshSidebarConversations();
+          return;
         }
       } catch {
-        setError("Không cập nhật được tiến trình agent realtime.");
+        if (!controller.signal.aborted) {
+          setError("Không cập nhật được tiến trình agent realtime.");
+          unchangedPolls += 1;
+        }
       }
-    }, 1000);
 
-    return () => window.clearInterval(interval);
-  }, [conversation, hasRunningRun, refreshConversationList, refreshSidebarConversations]);
+      if (cancelled) return;
+      const delay =
+        document.visibilityState === "hidden"
+          ? HIDDEN_TAB_POLL_MS
+          : unchangedPolls >= 3
+            ? IDLE_POLL_MS
+            : ACTIVE_POLL_MS;
+      timeoutId = window.setTimeout(poll, delay);
+    }
+
+    timeoutId = window.setTimeout(poll, ACTIVE_POLL_MS);
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+  }, [openConversationId, hasRunningRun, refreshConversationList, refreshSidebarConversations]);
 
   function openConversation(id: number) {
     router.push(`/chat/${id}`);
@@ -253,6 +300,24 @@ export default function AgentChat() {
     }
   }
 
+  async function handleCancelRun() {
+    if (!conversation || !hasRunningRun) return;
+
+    setError(null);
+    try {
+      const updated = await cancelConversation(conversation.id);
+      setConversation(updated);
+      await Promise.all([
+        refreshConversationList(updated.agent_project_id ?? undefined),
+        refreshSidebarConversations(),
+      ]);
+    } catch {
+      setError("Không huỷ được lượt chạy hiện tại. Kiểm tra Rails API.");
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function handleUploadDocument(file: File) {
     if (!conversation || uploadingDocument) return;
 
@@ -302,10 +367,12 @@ export default function AgentChat() {
           model={selectedModel}
           modelOptions={MODEL_OPTIONS}
           sending={sending}
+          running={hasRunningRun}
           uploadingDocument={uploadingDocument}
           onChangeMessage={setMessage}
           onChangeModel={setSelectedModel}
           onSend={() => handleSend()}
+          onCancel={handleCancelRun}
           onClarify={(text) => handleSend(text)}
           onDelete={handleDeleteConversation}
           onUploadDocument={conversation ? handleUploadDocument : undefined}

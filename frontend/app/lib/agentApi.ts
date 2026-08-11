@@ -135,8 +135,8 @@ export function listConversations(projectId?: number) {
   return request<AgentConversationSummary[]>(`/api/agent_conversations${query}`);
 }
 
-export function getConversation(id: number) {
-  return request<AgentConversation>(`/api/agent_conversations/${id}`);
+export function getConversation(id: number, init?: RequestInit) {
+  return request<AgentConversation>(`/api/agent_conversations/${id}`, init);
 }
 
 export function createConversation(input: NewConversationInput = {}) {
@@ -156,6 +156,12 @@ export function createConversation(input: NewConversationInput = {}) {
 export function deleteConversation(id: number) {
   return request<void>(`/api/agent_conversations/${id}`, {
     method: "DELETE",
+  });
+}
+
+export function cancelConversation(id: number) {
+  return request<AgentConversation>(`/api/agent_conversations/${id}/cancel`, {
+    method: "POST",
   });
 }
 

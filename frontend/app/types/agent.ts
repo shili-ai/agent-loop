@@ -127,6 +127,8 @@ export type AgentConversationSummary = Pick<
   AgentConversation,
   "agent_project_id" | "id" | "title" | "industry" | "customer_name"
 > & {
+  latest_run_status?: string | null;
+  running?: boolean;
   updated_at: string;
 };
 
