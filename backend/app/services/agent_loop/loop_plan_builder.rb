@@ -6,10 +6,12 @@ module AgentLoop
     end
 
     def call
+      built_steps = steps
       {
         goal: goal,
-        actions: actions,
-        output: markdown_output
+        steps: built_steps,
+        actions: built_steps.map { |step| step[:action] },
+        output: markdown_output(built_steps)
       }
     end
 
@@ -26,16 +28,51 @@ module AgentLoop
       end
     end
 
-    def actions
-      base = [ "search_documents" ]
-      base << "web_search" if needs_web_search?
-      unless @intent == "document_search"
-        base << "draft_artifact"
-        base << "verify_artifact"
+    def steps
+      list = []
+      if needs_clarification?
+        list << step("ask_clarification", "Hỏi lại để làm rõ",
+          "Yêu cầu còn ngắn/thiếu ngữ cảnh nên mình hỏi lại phạm vi trước khi dùng tool.",
+          "Người dùng xác nhận rõ phạm vi cần xử lý.")
       end
-      base << "ask_clarification" if needs_clarification?
-      base << "final_answer"
-      base
+
+      list << step("search_documents", "Tra kho tài liệu nội bộ",
+        "Mình tra kho tài liệu đã upload/project để tìm dẫn chứng cho yêu cầu này.",
+        "Tìm được tài liệu liên quan hoặc xác nhận không có nguồn nội bộ.")
+
+      if needs_web_search?
+        list << step("web_search", "Tìm thông tin trên web",
+          "Yêu cầu cần dữ kiện mới/ngoài kho nội bộ nên mình tìm thêm trên web.",
+          "Có nguồn web đạt chuẩn hoặc xác nhận không có nguồn phù hợp.")
+      end
+
+      unless @intent == "document_search"
+        list << step("draft_artifact", "Soạn bản nháp",
+          "Mình soạn bản nháp #{artifact_kind} dựa trên tài liệu và ngữ cảnh đã thu thập.",
+          "Có bản nháp đủ cấu trúc theo yêu cầu.")
+        list << step("verify_artifact", "Kiểm tra bản nháp",
+          "Mình kiểm tra bản nháp về cấu trúc, nội dung, nguồn và tính đúng yêu cầu.",
+          "Bản nháp đạt chuẩn hoặc chỉ ra điểm cần sửa.")
+      end
+
+      list << step("final_answer", "Tổng hợp câu trả lời cuối",
+        "Mình tổng hợp ngữ cảnh, tài liệu và bản nháp thành câu trả lời hoàn chỉnh.",
+        "Câu trả lời bám yêu cầu, chỉ dùng bằng chứng đã có.")
+      list
+    end
+
+    def artifact_kind
+      case @intent
+      when "proposal" then "proposal"
+      when "battlecard" then "battlecard"
+      when "follow_up" then "email follow-up"
+      when "rfp_answer" then "câu trả lời RFP/RFI"
+      else "tài liệu"
+      end
+    end
+
+    def step(action, title, detail, expected)
+      { action: action, title: title, detail: detail, expected: expected }
     end
 
     def needs_clarification?
@@ -46,9 +83,13 @@ module AgentLoop
       @message.downcase.match?(/web|internet|online|google|tin mới|mới nhất|hiện nay|thị trường|đối thủ|website/)
     end
 
-    def markdown_output
-      lines = [ "### Plan ngắn", "- Mục tiêu: #{goal}", "- Action dự kiến:" ]
-      actions.each { |action| lines << "  - `#{action}`" }
+    def markdown_output(steps)
+      lines = [ "### Plan ngắn", "- Mục tiêu: #{goal}", "- Kế hoạch chi tiết:" ]
+      steps.each_with_index do |step, index|
+        lines << "  #{index + 1}. **#{step[:title]}** (`#{step[:action]}`)"
+        lines << "     - Làm gì: #{step[:detail]}"
+        lines << "     - Mong đợi: #{step[:expected]}" if step[:expected]
+      end
       lines.join("\n")
     end
   end

@@ -297,6 +297,7 @@ module AgentLoop
         message: @message,
         intent: @intent,
         goal: @plan&.dig(:goal),
+        plan_steps: plan_steps_prompt,
         iteration: @iteration,
         max_iterations: @max_iterations,
         documents_count: documents.count,
@@ -339,6 +340,22 @@ module AgentLoop
 
     def web_attempts
       @state[:web_attempts].to_i
+    end
+
+    def plan_steps_prompt
+      steps = Array(@plan&.dig(:steps))
+      return "Không có." if steps.empty?
+
+      steps.each_with_index.map do |step, index|
+        action = step[:action] || step["action"]
+        title = step[:title] || step["title"]
+        detail = step[:detail] || step["detail"]
+        expected = step[:expected] || step["expected"]
+        parts = [ "#{index + 1}. #{title} (`#{action}`)" ]
+        parts << "làm gì: #{detail}" if detail.to_s.strip.present?
+        parts << "mong đợi: #{expected}" if expected.to_s.strip.present?
+        parts.join(" — ")
+      end.join("\n")
     end
 
     def working_notes_prompt

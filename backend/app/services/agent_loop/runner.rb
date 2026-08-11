@@ -57,6 +57,7 @@ module AgentLoop
       plan = {
         goal: analysis[:goal],
         actions: analysis[:actions],
+        steps: analysis[:steps],
         output: analysis[:output]
       }
       plan_actions = Array(plan[:actions]).map { |action| humanize_action(action) }.join(" → ")
@@ -91,8 +92,9 @@ module AgentLoop
       append_working_note(
         state,
         action: "plan",
-        summary: "Mục tiêu: #{plan[:goal]}; action dự kiến: #{Array(plan[:actions]).join(', ')}.",
-        planned_actions: Array(plan[:actions])
+        summary: "Mục tiêu: #{plan[:goal]}; các bước dự kiến: #{planned_steps_summary(plan)}.",
+        planned_actions: Array(plan[:actions]),
+        planned_steps: Array(plan[:steps])
       )
       run_broad_retrieval_after_plan(run, state, plan, request_content, context)
       check_cancelled!(run)
@@ -426,37 +428,39 @@ module AgentLoop
       return if ClarificationPolicy.new(message: message, state: state, context: context).required?
 
       planned_actions = Array(plan[:actions]).map(&:to_s)
-      return unless (planned_actions & %w[search_documents web_search]).any?
+      do_documents = planned_actions.include?("search_documents")
+      do_web = planned_actions.include?("web_search")
+      return unless do_documents || do_web
 
       keywords = search_keywords(message)
-      document_thread = Thread.new { DocumentSearch.new(query: message, conversation: @conversation).call }
-      web_thread = Thread.new do
-        searcher = WebSearch.new(query: message)
-        {
-          results: searcher.call,
-          candidates: searcher.candidates,
-          raw_results: searcher.raw_results
-        }
-      end
 
-      documents = document_thread.value
-      web_payload = web_thread.value
+      # Chỉ chạy đúng nhánh mà plan yêu cầu; nếu cả hai thì chạy song song.
+      document_thread = do_documents ? Thread.new { retrieve_documents(message, keywords) } : nil
+      web_thread = do_web ? Thread.new { retrieve_web(message) } : nil
+
+      doc_payload = document_thread ? document_thread.value : { documents: [], reformulated: nil }
+      documents = doc_payload[:documents]
+      web_payload = web_thread ? web_thread.value : { results: [], candidates: [], raw_results: [] }
       web_results = web_payload[:results]
       web_candidates = web_payload[:candidates]
       web_raw_results = web_payload[:raw_results]
       pages = web_results.any? ? WebPageReader.new(results: web_results).call : []
       readable_pages = pages.select { |page| page[:status] == "read" && page[:content].present? }
 
-      state[:documents] = documents
-      state[:web_results] = web_results
-      state[:web_pages] = readable_pages
-      state[:search_attempts] = state[:search_attempts].to_i + 1
-      state[:web_attempts] = state[:web_attempts].to_i + 1
+      if do_documents
+        state[:documents] = documents
+        state[:search_attempts] = state[:search_attempts].to_i + 1
+      end
+      if do_web
+        state[:web_results] = web_results
+        state[:web_pages] = readable_pages
+        state[:web_attempts] = state[:web_attempts].to_i + 1
+      end
 
       append_working_note(
         state,
-        action: "parallel_retrieval",
-        summary: "Đã tìm đồng thời trong tài liệu chat/project/Drive và trên web; tài liệu: #{documents.count}, web đạt chuẩn: #{web_results.count}, trang đọc được: #{readable_pages.count}.",
+        action: "retrieval",
+        summary: retrieval_note_summary(do_documents, do_web, documents, web_results, readable_pages, doc_payload[:reformulated]),
         evidence_count: documents.count + web_results.count + readable_pages.count,
         keywords: keywords,
         titles: documents.map { |document| document[:title] },
@@ -466,11 +470,12 @@ module AgentLoop
       create_step(
         run,
         "retrieval",
-        "Tìm nguồn đồng thời",
-        "Mình tìm cùng lúc trong tài liệu chat/project, Google Drive live search và web với từ khoá #{format_keywords(keywords)} — thấy #{documents.count} tài liệu, #{web_results.count} kết quả web đạt chuẩn và đọc được #{readable_pages.count} trang.",
+        retrieval_step_title(do_documents, do_web),
+        retrieval_step_summary(do_documents, do_web, documents, web_results, readable_pages, keywords, doc_payload[:reformulated]),
         {
-          tools: [ "document_search", "drive_document_search", "web_search", "web_page_reader" ],
+          tools: retrieval_tools(do_documents, do_web),
           query: message,
+          reformulated_query: doc_payload[:reformulated],
           keywords: keywords,
           documents: documents,
           web_raw_results: web_raw_results,
@@ -481,6 +486,64 @@ module AgentLoop
         }
       )
       evaluate_search_results(run, state, message)
+    end
+
+    # Retry reformulate: nếu tìm bằng cả câu không ra tài liệu, thử lại một lần
+    # bằng query rút gọn chỉ gồm keyword.
+    def retrieve_documents(message, keywords)
+      documents = DocumentSearch.new(query: message, conversation: @conversation).call
+      return { documents: documents, reformulated: nil } if documents.any? || keywords.blank?
+
+      reformulated = keywords.join(" ")
+      return { documents: documents, reformulated: nil } if reformulated.strip.casecmp?(message.to_s.strip)
+
+      retried = DocumentSearch.new(query: reformulated, conversation: @conversation).call
+      { documents: retried, reformulated: retried.any? ? reformulated : nil }
+    end
+
+    def retrieve_web(message)
+      searcher = WebSearch.new(query: message)
+      { results: searcher.call, candidates: searcher.candidates, raw_results: searcher.raw_results }
+    end
+
+    def retrieval_tools(do_documents, do_web)
+      tools = []
+      tools.concat([ "document_search", "drive_document_search" ]) if do_documents
+      tools.concat([ "web_search", "web_page_reader" ]) if do_web
+      tools
+    end
+
+    def retrieval_step_title(do_documents, do_web)
+      return "Tìm nguồn đồng thời" if do_documents && do_web
+      return "Tìm tài liệu nội bộ" if do_documents
+
+      "Tìm trên web"
+    end
+
+    def retrieval_note_summary(do_documents, do_web, documents, web_results, readable_pages, reformulated)
+      parts = []
+      parts << "tài liệu: #{documents.count}" if do_documents
+      parts << "web đạt chuẩn: #{web_results.count}" if do_web
+      parts << "trang đọc được: #{readable_pages.count}" if do_web
+      retry_note = reformulated ? " (đã thử lại với từ khoá rút gọn “#{reformulated}”)" : ""
+      "Đã retrieve theo plan#{retry_note}; #{parts.join(', ')}."
+    end
+
+    def retrieval_step_summary(do_documents, do_web, documents, web_results, readable_pages, keywords, reformulated)
+      scope =
+        if do_documents && do_web
+          "trong tài liệu chat/project, Google Drive và trên web"
+        elsif do_documents
+          "trong tài liệu chat/project và Google Drive"
+        else
+          "trên web"
+        end
+      counts = []
+      counts << "#{documents.count} tài liệu" if do_documents
+      counts << "#{web_results.count} kết quả web đạt chuẩn" if do_web
+      counts << "đọc được #{readable_pages.count} trang" if do_web
+      retry_note = reformulated ? " Lần đầu không ra tài liệu nên mình thử lại với từ khoá rút gọn “#{reformulated}”." : ""
+      "Mình tìm #{scope} với từ khoá #{format_keywords(keywords)} — thấy #{counts.join(', ')}.#{retry_note}"
     end
 
     def parallel_retrieval_output(documents, web_results, web_candidates, web_raw_results, pages)
@@ -746,6 +809,17 @@ module AgentLoop
       when "final_answer" then "tổng hợp câu trả lời"
       else action.to_s
       end
+    end
+
+    def planned_steps_summary(plan)
+      steps = Array(plan[:steps])
+      return Array(plan[:actions]).map { |action| humanize_action(action) }.join(" → ") if steps.empty?
+
+      steps.map do |step|
+        title = step[:title] || step["title"]
+        action = step[:action] || step["action"]
+        title.presence || humanize_action(action)
+      end.join(" → ")
     end
 
     def search_keywords(message)

@@ -67,6 +67,7 @@ module AgentLoop
         understanding: "Mình đọc yêu cầu và dùng luật dự phòng để phân loại vì model phân tích chưa sẵn sàng.",
         intent: intent,
         goal: plan[:goal],
+        steps: Array(plan[:steps]),
         actions: Array(plan[:actions]),
         output: plan[:output]
       }
@@ -74,20 +75,73 @@ module AgentLoop
 
     def normalize(parsed, fallback)
       intent = INTENTS.include?(parsed[:intent]) ? parsed[:intent] : fallback[:intent]
-      actions = Array(parsed[:actions]).map(&:to_s).select { |action| ACTIONS.include?(action) }.uniq
-      actions = fallback[:actions] if actions.empty?
-      actions << "final_answer" unless actions.include?("final_answer")
       goal = parsed[:goal].to_s.strip.presence || fallback[:goal]
       understanding = parsed[:understanding].to_s.strip.presence || fallback[:understanding]
+
+      steps = normalize_steps(parsed[:steps])
+      steps = normalize_steps(fallback[:steps]) if steps.empty?
+      steps = ensure_final_step(steps)
+      actions = steps.map { |step| step[:action] }.uniq
 
       {
         understanding: understanding,
         intent: intent,
         goal: goal,
+        steps: steps,
         actions: actions,
-        output: markdown_output(understanding, intent, goal, actions)
+        output: markdown_output(understanding, intent, goal, steps)
       }
     end
+
+    # Chấp nhận cả format mới (steps có detail) lẫn format cũ (mảng action string).
+    def normalize_steps(raw)
+      Array(raw).filter_map do |item|
+        if item.is_a?(Hash)
+          action = (item[:action] || item["action"]).to_s.strip
+          next unless ACTIONS.include?(action)
+
+          {
+            action: action,
+            title: (item[:title] || item["title"]).to_s.strip.presence || default_title(action),
+            detail: (item[:detail] || item["detail"]).to_s.strip.presence || ACTIONS_DETAIL_FALLBACK[action],
+            expected: (item[:expected] || item["expected"]).to_s.strip.presence
+          }
+        else
+          action = item.to_s.strip
+          next unless ACTIONS.include?(action)
+
+          { action: action, title: default_title(action), detail: ACTIONS_DETAIL_FALLBACK[action], expected: nil }
+        end
+      end
+    end
+
+    def ensure_final_step(steps)
+      return steps if steps.any? { |step| step[:action] == "final_answer" }
+
+      steps + [ { action: "final_answer", title: default_title("final_answer"), detail: ACTIONS_DETAIL_FALLBACK["final_answer"], expected: nil } ]
+    end
+
+    def default_title(action)
+      {
+        "search_documents" => "Tra kho tài liệu nội bộ",
+        "web_search" => "Tìm thông tin trên web",
+        "draft_artifact" => "Soạn bản nháp",
+        "verify_artifact" => "Kiểm tra bản nháp",
+        "revise_artifact" => "Sửa lại bản nháp",
+        "ask_clarification" => "Hỏi lại để làm rõ",
+        "final_answer" => "Tổng hợp câu trả lời cuối"
+      }.fetch(action, action)
+    end
+
+    ACTIONS_DETAIL_FALLBACK = {
+      "search_documents" => "Mình tra kho tài liệu nội bộ để tìm dẫn chứng liên quan.",
+      "web_search" => "Mình tìm thông tin mới hoặc ngoài kho nội bộ trên web.",
+      "draft_artifact" => "Mình soạn bản nháp dựa trên tài liệu đã có.",
+      "verify_artifact" => "Mình kiểm tra bản nháp về cấu trúc, nội dung và nguồn.",
+      "revise_artifact" => "Mình sửa bản nháp theo điểm còn thiếu.",
+      "ask_clarification" => "Mình hỏi lại người dùng để làm rõ phạm vi.",
+      "final_answer" => "Mình tổng hợp toàn bộ thành câu trả lời cuối."
+    }.freeze
 
     def parse(content)
       data = JSON.parse(extract_json(content))
@@ -95,7 +149,7 @@ module AgentLoop
         understanding: data["understanding"],
         intent: data["intent"].to_s.strip,
         goal: data["goal"],
-        actions: data["actions"] || data["steps"]
+        steps: data["steps"] || data["actions"]
       }
     end
 
@@ -158,16 +212,25 @@ module AgentLoop
       lines.presence&.join("\n") || "Không có."
     end
 
-    def markdown_output(understanding, intent, goal, actions)
+    def markdown_output(understanding, intent, goal, steps)
       lines = [
         "### Phân tích bằng model",
         "- Mình hiểu: #{understanding}",
         "- Intent: `#{intent}`",
         "- Mục tiêu: #{goal}",
-        "- Action dự kiến:"
+        "- Kế hoạch chi tiết:"
       ]
-      actions.each { |action| lines << "  - `#{action}`" }
+      lines.concat(steps_markdown(steps))
       lines.join("\n")
+    end
+
+    def steps_markdown(steps)
+      steps.each_with_index.flat_map do |step, index|
+        block = [ "  #{index + 1}. **#{step[:title]}** (`#{step[:action]}`)" ]
+        block << "     - Làm gì: #{step[:detail]}" if step[:detail].present?
+        block << "     - Mong đợi: #{step[:expected]}" if step[:expected].present?
+        block
+      end
     end
 
     def fallback_output(fallback, error)
@@ -176,8 +239,8 @@ module AgentLoop
         "- Model phân tích lỗi: #{error.message}",
         "- Intent: `#{fallback[:intent]}`",
         "- Mục tiêu: #{fallback[:goal]}",
-        "- Action dự kiến:",
-        *Array(fallback[:actions]).map { |action| "  - `#{action}`" }
+        "- Kế hoạch chi tiết:",
+        *steps_markdown(normalize_steps(fallback[:steps]))
       ].join("\n")
     end
   end

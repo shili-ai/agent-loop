@@ -46,9 +46,17 @@ module AgentLoop
             document[:filename] || document["filename"],
             document[:snippet] || document["snippet"],
             document[:source] || document["source"]
-          ].compact.join(" ")
+          ].compact.join(" "),
+          prescored: retrieval_scored?(document)
         )
       end
+    end
+
+    # Tài liệu nội bộ do ES (BM25) hoặc quét DB xếp hạng đã mang sẵn điểm phù hợp;
+    # giữ lại kể cả khi không khớp keyword thô để không vứt oan nguồn đúng ngữ nghĩa.
+    def retrieval_scored?(document)
+      score = document[:score] || document["score"] || document[:retrieval_score] || document["retrieval_score"]
+      score.to_f.positive?
     end
 
     def evaluate_web_results
@@ -100,9 +108,9 @@ module AgentLoop
       end
     end
 
-    def evaluate_item(item, type:, title:, url:, text:)
+    def evaluate_item(item, type:, title:, url:, text:, prescored: false)
       score, matched_keywords = score_text(title: title, url: url, text: text)
-      accepted = query_keywords.empty? || score.positive?
+      accepted = query_keywords.empty? || score.positive? || prescored
       {
         type: type,
         title: title.to_s.presence || url.to_s.presence || "Không có tiêu đề",
@@ -110,7 +118,7 @@ module AgentLoop
         score: score,
         accepted: accepted,
         matched_keywords: matched_keywords,
-        reason: reason_for(accepted, matched_keywords, score),
+        reason: reason_for(accepted, matched_keywords, score, prescored: prescored),
         item: item
       }
     end
@@ -182,11 +190,12 @@ module AgentLoop
       evaluations.count { |entry| entry[:accepted] }
     end
 
-    def reason_for(accepted, matched_keywords, score)
+    def reason_for(accepted, matched_keywords, score, prescored: false)
       if accepted
         return "Không có từ khoá đủ rõ trong yêu cầu nên giữ lại để model cân nhắc." if query_keywords.empty?
+        return "Khớp từ khoá #{matched_keywords.first(5).join(', ')} với yêu cầu." if score.positive?
 
-        "Khớp từ khoá #{matched_keywords.first(5).join(', ')} với yêu cầu."
+        "Không khớp keyword thô nhưng đã được nguồn nội bộ xếp hạng phù hợp nên giữ lại."
       else
         "Chưa thấy khớp từ khoá chính của yêu cầu trong title/snippet/nội dung đọc được."
       end

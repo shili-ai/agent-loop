@@ -36,14 +36,18 @@ module AgentLoop
     end
 
     def clean(text)
-      text.encode("UTF-8", invalid: :replace, undef: :replace, replace: "")
+      # Uploaded bytes come in as ASCII-8BIT. Treat them as UTF-8 (the common
+      # case for text uploads) and scrub only the genuinely invalid byte
+      # sequences — encoding *from* ASCII-8BIT would drop every multi-byte
+      # char (e.g. Vietnamese diacritics) as "undefined".
+      utf8 = text.dup.force_encoding("UTF-8")
+      utf8 = utf8.scrub("") unless utf8.valid_encoding?
+      utf8
         .gsub(/\r\n?/, "\n")
         .gsub(/[ \t]+/, " ")
         .gsub(/\n{4,}/, "\n\n\n")
         .strip
         .first(MAX_CHARS)
-    rescue Encoding::UndefinedConversionError, Encoding::InvalidByteSequenceError
-      text.force_encoding("UTF-8").encode("UTF-8", invalid: :replace, undef: :replace, replace: "").first(MAX_CHARS)
     end
   end
 end

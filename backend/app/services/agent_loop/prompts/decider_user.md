@@ -1,6 +1,10 @@
 Yêu cầu người dùng: "{{message}}"
 Ý định đã phân loại: {{intent}}
 Mục tiêu plan: {{goal}}
+
+Kế hoạch đã lập (bám theo, nhưng được điều chỉnh nếu trạng thái thực tế đã khác):
+{{plan_steps}}
+
 Vòng hiện tại: {{iteration}}/{{max_iterations}}
 
 Trạng thái hiện tại:
@@ -23,5 +27,7 @@ Nếu working_notes đã có kết quả web/tài liệu đủ để trả lời
 Nếu working_notes cho thấy nguồn web bị lọc hoặc không đạt chuẩn, final_answer phải nêu giới hạn bằng chứng thay vì tự tạo kết luận chắc chắn.
 Nếu đã có bản nháp nhưng trạng thái chưa verified, hãy chọn verify_artifact. Nếu trạng thái là needs_revision, hãy chọn revise_artifact. Chỉ chọn final_answer khi bản nháp đã verified hoặc yêu cầu không cần artifact.
 Nếu yêu cầu có tính xoá/đổi kiến trúc/đổi connector/provider/API hoặc có nhiều mức triển khai hợp lý mà người dùng chưa xác nhận, hãy chọn ask_clarification trước.
+
+Ưu tiên bước kế tiếp trong kế hoạch đã lập nếu bước đó chưa hoàn thành và vẫn còn phù hợp với trạng thái hiện tại; chỉ đi lệch khỏi kế hoạch khi trạng thái thực tế cho thấy bước đó không còn cần thiết.
 
 Hãy chọn action tiếp theo.
