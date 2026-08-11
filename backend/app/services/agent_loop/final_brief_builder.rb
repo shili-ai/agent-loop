@@ -34,8 +34,9 @@ module AgentLoop
           type: document[:type],
           snippet: document[:snippet],
           source: document[:source],
-          url: document[:url]
-        }
+          url: document[:url],
+          evaluation: document[:evaluation]
+        }.compact
       end
     end
 
@@ -58,8 +59,9 @@ module AgentLoop
           title: result[:title],
           url: result[:url],
           snippet: result[:snippet],
-          source: result[:source]
-        }
+          source: result[:source],
+          evaluation: result[:evaluation]
+        }.compact
       end
     end
 
@@ -71,8 +73,9 @@ module AgentLoop
           description: page[:description],
           headings: page[:headings],
           content: page[:content],
-          content_length: page[:content_length]
-        }
+          content_length: page[:content_length],
+          evaluation: page[:evaluation]
+        }.compact
       end
     end
 

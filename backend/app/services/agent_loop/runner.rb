@@ -239,6 +239,7 @@ module AgentLoop
           summary,
           { tools: [ "document_search" ], query: message, keywords: keywords, documents: documents, output: DocumentSearchNoteBuilder.new(documents: documents).call }
         )
+        evaluate_search_results(run, state, message)
       when "web_search"
         keywords = search_keywords(message)
         searcher = WebSearch.new(query: message)
@@ -304,6 +305,7 @@ module AgentLoop
             }
           )
         end
+        evaluate_search_results(run, state, message)
       when "draft_artifact"
         artifact_result = ArtifactBuilder.new(intent: intent, documents: state[:documents], message: message).call
         artifact = artifact_result[:artifact].merge(content: artifact_result[:output])
@@ -465,6 +467,7 @@ module AgentLoop
           output: parallel_retrieval_output(documents, web_results, web_candidates, web_raw_results, pages)
         }
       )
+      evaluate_search_results(run, state, message)
     end
 
     def parallel_retrieval_output(documents, web_results, web_candidates, web_raw_results, pages)
@@ -473,6 +476,71 @@ module AgentLoop
         WebSearchNoteBuilder.new(results: web_results, candidates: web_candidates, raw_results: web_raw_results).call,
         WebPageReadNoteBuilder.new(pages: pages).call
       ].join("\n\n")
+    end
+
+    def evaluate_search_results(run, state, message)
+      documents = Array(state[:documents])
+      web_results = Array(state[:web_results])
+      web_pages = Array(state[:web_pages])
+      return if documents.blank? && web_results.blank? && web_pages.blank?
+
+      evaluation = SearchResultEvaluator.new(
+        query: message,
+        documents: documents,
+        web_results: web_results,
+        web_pages: web_pages
+      ).call
+
+      state[:documents] = evaluation[:documents]
+      state[:web_results] = evaluation[:web_results]
+      state[:web_pages] = evaluation[:web_pages]
+
+      accepted_count = evaluation[:documents].count + evaluation[:web_results].count + evaluation[:web_pages].count
+      rejected_count = evaluation[:rejected_documents].count + evaluation[:rejected_web_results].count + evaluation[:rejected_web_pages].count
+      append_working_note(
+        state,
+        action: "evaluate_sources",
+        summary: "Đã đánh giá độ phù hợp nguồn trước khi tổng hợp; giữ #{accepted_count} nguồn, loại #{rejected_count} nguồn.",
+        evidence_count: accepted_count,
+        rejected_count: rejected_count,
+        document_titles: evaluation[:documents].map { |document| document[:title] },
+        web_titles: evaluation[:web_results].map { |result| result[:title] },
+        web_page_titles: evaluation[:web_pages].map { |page| page[:title] }
+      )
+      create_step(
+        run,
+        "evaluation",
+        "Đánh giá nguồn tìm được",
+        "Mình kiểm tra độ khớp của tài liệu, link web và trang đã đọc trước khi đưa vào câu trả lời — giữ #{accepted_count} nguồn, loại #{rejected_count} nguồn.",
+        source_evaluation_payload(evaluation, message: message, documents: documents, web_results: web_results, web_pages: web_pages)
+      )
+    end
+
+    def source_evaluation_payload(evaluation, message:, documents:, web_results:, web_pages:)
+      {
+        query: message,
+        before_counts: {
+          documents: documents.count,
+          web_results: web_results.count,
+          web_pages: web_pages.count
+        },
+        after_counts: {
+          documents: evaluation[:documents].count,
+          web_results: evaluation[:web_results].count,
+          web_pages: evaluation[:web_pages].count
+        },
+        document_evaluations: compact_evaluations(evaluation[:document_evaluations]),
+        web_result_evaluations: compact_evaluations(evaluation[:web_result_evaluations]),
+        web_page_evaluations: compact_evaluations(evaluation[:web_page_evaluations]),
+        rejected_documents: evaluation[:rejected_documents],
+        rejected_web_results: evaluation[:rejected_web_results],
+        rejected_web_pages: evaluation[:rejected_web_pages],
+        output: evaluation[:output]
+      }
+    end
+
+    def compact_evaluations(entries)
+      Array(entries).map { |entry| entry.except(:item) }
     end
 
     def build_tool_result(state)
