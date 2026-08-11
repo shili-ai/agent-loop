@@ -2268,12 +2268,245 @@ body {
   padding: 18px 24px 24px;
 }
 
+.project-page:has(.connector-page) {
+  background: #ffffff;
+  padding: 18px 24px 24px;
+}
+
 .project-directory-page {
   display: grid;
   gap: 16px;
   width: 100%;
   max-width: 1440px;
   margin: 0;
+}
+
+.connector-page {
+  display: grid;
+  gap: 16px;
+  width: 100%;
+  max-width: 1440px;
+  margin: 0;
+}
+
+.connector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.connector-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.connector-title-icon {
+  color: #475569;
+  font-size: 20px;
+}
+
+.connector-shell {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  min-height: calc(100dvh - 132px);
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.connector-list {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 12px;
+  border-right: 1px solid #eef2f7;
+  background: #f8fafc;
+}
+
+.connector-list-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  padding: 10px;
+  color: #111827;
+  cursor: pointer;
+  text-align: left;
+}
+
+.connector-list-item:hover,
+.connector-list-item.active {
+  background: #ffffff;
+  box-shadow: inset 3px 0 0 #1677ff;
+}
+
+.connector-list-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 8px;
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.connector-list-copy {
+  display: grid;
+  min-width: 0;
+}
+
+.connector-list-title {
+  color: #111827;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.connector-list-meta {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.connector-detail {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  min-width: 0;
+  padding: 22px 24px;
+}
+
+.connector-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.connector-eyebrow {
+  margin-bottom: 4px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.connector-detail-title {
+  margin: 0 !important;
+}
+
+.connector-description {
+  max-width: 720px;
+  margin: 6px 0 0 !important;
+  font-size: 13px;
+}
+
+.connector-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  border: 1px solid #fed7aa;
+  border-radius: 999px;
+  background: #fff7ed;
+  padding: 5px 10px;
+  color: #9a3412;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.connector-status-pill.connected {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.connector-form {
+  display: grid;
+  gap: 14px;
+  max-width: 880px;
+}
+
+.connector-field {
+  display: grid;
+  gap: 8px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.connector-field.compact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: min(100%, 360px);
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 10px 12px;
+}
+
+.connector-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.connector-status-panel {
+  display: grid;
+  gap: 10px;
+  max-width: 880px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 14px;
+}
+
+.connector-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.connector-status-row strong {
+  color: #111827;
+}
+
+.connector-message {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 10px;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.connector-note {
+  max-width: 880px;
+  border-left: 3px solid #1677ff;
+  background: #f8fafc;
+  padding: 10px 12px;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.connector-empty {
+  display: grid;
+  min-height: 280px;
+  place-items: center;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  color: #64748b;
 }
 
 .project-directory-header {

@@ -10,12 +10,16 @@ module AgentLoop
 
     def call
       uploaded = uploaded_documents
-      return uploaded if uploaded.any?
+      drive = DriveDocumentSearch.new(query: @query, limit: @limit).call
 
-      DummyDocumentSearch.new(query: @query).call
+      merge_results(uploaded, drive).first(@limit)
     end
 
     private
+
+    def merge_results(*groups)
+      groups.flatten.compact.uniq { |document| document[:source].presence || [ document[:title], document[:snippet] ] }
+    end
 
     def uploaded_documents
       documents = AgentDocument.for_conversation_scope(@conversation).where.not(content: [ nil, "" ])

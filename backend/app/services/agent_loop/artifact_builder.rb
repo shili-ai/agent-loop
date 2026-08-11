@@ -1,8 +1,9 @@
 module AgentLoop
   class ArtifactBuilder
-    def initialize(intent:, documents:)
+    def initialize(intent:, documents:, message: nil)
       @intent = intent
       @documents = documents
+      @message = message.to_s
     end
 
     def call
@@ -16,6 +17,8 @@ module AgentLoop
     private
 
     def tool_name
+      return "markdown_table_builder" if table_request?
+
       case @intent
       when "battlecard" then "battlecard_builder"
       when "proposal" then "proposal_outline_builder"
@@ -26,7 +29,11 @@ module AgentLoop
     end
 
     def artifact
+      return @artifact if defined?(@artifact)
+
+      @artifact =
       case @intent
+      when ->(_intent) { table_request? } then markdown_table
       when "battlecard" then battlecard
       when "proposal" then proposal_outline
       when "follow_up" then follow_up_email
@@ -36,11 +43,58 @@ module AgentLoop
     end
 
     def markdown_output
-      lines = ["### #{artifact[:title]}"]
+      return artifact[:content] if artifact[:content].present?
+
+      lines = [ "### #{artifact[:title]}" ]
       artifact[:bullets].each { |bullet| lines << "- #{bullet}" }
       lines << ""
       lines << "**Nguồn:** #{artifact[:sources].join(', ')}"
       lines.join("\n")
+    end
+
+    def markdown_table
+      {
+        title: table_title,
+        bullets: table_rows.map { |row| row[0] },
+        content: table_content,
+        sources: source_titles
+      }
+    end
+
+    def table_content
+      lines = [ "# #{table_title}", "" ]
+      lines << "| Item | Feature | Effort (Man-day) | Remarks |"
+      lines << "|---|---|---:|---|"
+      table_rows.each { |row| lines << "| #{row.join(' | ')} |" }
+      lines << ""
+      lines << "**Total estimate:** khoảng **2.5-4 man-days** cho bản login Google cơ bản, tuỳ app đã có user/session hay chưa."
+      lines << ""
+      lines << "> Giả định: Rails app đã có database và môi trường dev/prod cơ bản; estimate chưa bao gồm phân quyền phức tạp hoặc SSO enterprise."
+      lines.join("\n")
+    end
+
+    def table_title
+      return "Estimate login Google bằng Rails" if normalized_message.match?(/login.*google|google.*login|dang nhap.*google|đăng nhập.*google/)
+
+      "Bảng đề xuất"
+    end
+
+    def table_rows
+      if normalized_message.match?(/login.*google|google.*login|dang nhap.*google|đăng nhập.*google/)
+        [
+          [ "1", "Google OAuth setup", "0.5", "Tạo OAuth Client, redirect URI và env vars." ],
+          [ "2", "Rails backend integration", "1-1.5", "OmniAuth/Devise callback, find-or-create user." ],
+          [ "3", "Session & security", "0.5-1", "Session/JWT, CSRF state, logout và error handling." ],
+          [ "4", "UI & testing", "0.5-1", "Nút login, local/prod callback test và failure path." ]
+        ]
+      else
+        [
+          [ "1", "Scope clarification", "0.5", "Chốt yêu cầu và tiêu chí hoàn thành." ],
+          [ "2", "Solution design", "0.5", "Phác thảo cấu trúc nội dung/luồng xử lý." ],
+          [ "3", "Implementation", "1-2", "Tuỳ độ phức tạp và dependency." ],
+          [ "4", "Review & handoff", "0.5", "Review, chỉnh sửa và hoàn thiện output." ]
+        ]
+      end
     end
 
     def battlecard
@@ -106,6 +160,19 @@ module AgentLoop
 
     def source_titles
       @documents.map { |document| document[:title] }
+    end
+
+    def table_request?
+      normalized_message.match?(/\b(table|bang|bảng)\b/) ||
+        normalized_message.include?("lập bảng") ||
+        normalized_message.include?("lap bang")
+    end
+
+    def normalized_message
+      @normalized_message ||= @message.downcase
+        .unicode_normalize(:nfkd)
+        .gsub(/\p{Mn}/, "")
+        .gsub("đ", "d")
     end
   end
 end

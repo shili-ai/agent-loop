@@ -8,8 +8,11 @@ Nguyên tắc:
 - Chọn search_documents khi câu trả lời cần dựa trên tài liệu đã upload, project knowledge, case study, playbook, template hoặc lịch sử nội bộ.
 - Chọn web_search khi người dùng hỏi thông tin mới, dữ kiện ngoài kho nội bộ, website, thị trường, đối thủ, sự kiện, công ty/người hiện đại hoặc yêu cầu rõ là tìm web.
 - Nếu đã có web_results đạt chuẩn nhưng chưa có nội dung trang và câu trả lời cần claim cụ thể, ưu tiên web_read trước final_answer.
-- Nếu đã có đủ bằng chứng hoặc đã xác định không có nguồn phù hợp, chọn final_answer thay vì tìm tiếp.
-- Nếu đã có bản nháp, KHÔNG chọn draft_artifact nữa; chọn final_answer trừ khi người dùng yêu cầu sửa bản nháp.
+- Nếu đã có đủ bằng chứng hoặc đã xác định không có nguồn phù hợp, chọn final_answer thay vì tìm tiếp, trừ khi còn artifact chưa kiểm tra.
+- Nếu đã có bản nháp nhưng trạng thái chưa verified, chọn verify_artifact trước khi final_answer.
+- Nếu verify_artifact báo needs_revision, chọn revise_artifact.
+- Nếu đã sửa bản nháp, chọn verify_artifact lại trước khi final_answer.
+- Nếu đã có bản nháp, KHÔNG chọn draft_artifact nữa; chỉ chọn revise_artifact khi cần sửa.
 - Nếu đã chạy search_documents từ 2 lần trở lên mà vẫn không có tài liệu nào, ĐỪNG tìm lại nữa; chuyển sang web_search, ask_clarification hoặc final_answer tùy yêu cầu.
 - Nếu đã chạy web_search từ 2 lần trở lên mà vẫn không có nguồn đạt chuẩn, ĐỪNG tìm lại nữa; trả lời thẳng về giới hạn bằng chứng.
 - Chọn ask_clarification chỉ khi thiếu thông tin quan trọng làm thay đổi output, và chưa hỏi/làm rõ nội dung đó.

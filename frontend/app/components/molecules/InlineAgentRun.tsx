@@ -142,6 +142,27 @@ function StepResultPreview({ step }: { step: AgentStep }) {
     );
   }
 
+  if (step.kind === "verification") {
+    const checks = asRecords(step.data.checks);
+    if (!checks.length) return null;
+
+    return (
+      <div className="step-result-preview">
+        <div className="step-result-group">
+          <div className="step-result-title">Checklist</div>
+          <ul className="step-result-list">
+            {checks.map((check, index) => (
+              <li key={`${asText(check.label) || index}-${index}`}>
+                <span className="step-result-name">{check.passed ? "OK" : "Cần sửa"} · {asText(check.label)}</span>
+                {asText(check.message) ? <span className="step-result-reason"> · {asText(check.message)}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    );
+  }
+
   return null;
 }
 
@@ -336,6 +357,11 @@ function stepMetadata(step: AgentStep) {
     addItem("Tài liệu", artifactTitle(data.artifact));
   }
 
+  if (step.kind === "verification") {
+    addItem("Trạng thái", data.status);
+    addItem("Số check", Array.isArray(data.checks) ? data.checks.length : undefined);
+  }
+
   return items;
 }
 
@@ -402,6 +428,20 @@ function stepInput(step: AgentStep): { content: string } {
           ...base,
           tools: data.tools,
           artifact_title: artifactTitle(data.artifact),
+        },
+        null,
+        2
+      ),
+    };
+  }
+
+  if (step.kind === "verification") {
+    return {
+      content: JSON.stringify(
+        {
+          ...base,
+          status: data.status,
+          checks: data.checks,
         },
         null,
         2
@@ -487,6 +527,7 @@ function stepIcon(step: AgentStep) {
   if (step.kind === "web_search") return <FileSearchOutlined />;
   if (step.kind === "web_read") return <FileTextOutlined />;
   if (step.kind === "artifact") return <ToolOutlined />;
+  if (step.kind === "verification") return <CheckCircleOutlined />;
   if (step.kind === "clarification") return <BulbOutlined />;
   if (step.kind === "tool") return <ToolOutlined />;
   if (step.kind === "llm") return <RobotOutlined />;
@@ -505,6 +546,7 @@ function stepLabel(step: AgentStep) {
   if (step.kind === "web_search") return "Tra cứu trên web";
   if (step.kind === "web_read") return "Đọc trang web";
   if (step.kind === "artifact") return "Soạn bản nháp";
+  if (step.kind === "verification") return "Kiểm tra bản nháp";
   if (step.kind === "clarification") return "Đặt câu hỏi làm rõ";
   if (step.kind === "tool") return "Dùng công cụ";
   if (step.kind === "llm") return "Suy nghĩ với model";
@@ -514,7 +556,7 @@ function stepLabel(step: AgentStep) {
 }
 
 function stepTone(step: AgentStep) {
-  if (["document_search", "web_search", "web_read", "artifact", "tool"].includes(step.kind)) return "tool";
+  if (["document_search", "web_search", "web_read", "artifact", "verification", "tool"].includes(step.kind)) return "tool";
   if (step.kind === "llm") return "model";
   if (["decision", "evaluation", "plan", "reasoning"].includes(step.kind)) return "thinking";
   if (step.kind === "answer") return "final";

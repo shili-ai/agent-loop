@@ -1,4 +1,5 @@
 require "time"
+require "securerandom"
 
 module AgentLoop
   class Runner
@@ -69,6 +70,7 @@ module AgentLoop
         web_results: [],
         web_pages: [],
         artifact: nil,
+        artifacts: [],
         artifact_tool: nil,
         clarification: nil,
         working_notes: [],
@@ -88,6 +90,7 @@ module AgentLoop
         summary: "Mục tiêu: #{plan[:goal]}; action dự kiến: #{Array(plan[:actions]).join(', ')}.",
         planned_actions: Array(plan[:actions])
       )
+      run_broad_retrieval_after_plan(run, state, plan, request_content)
       loop_result = run_dynamic_loop(run, intent, state, plan, request_content, context)
       tool_result = build_tool_result(state)
       model_answer = loop_result[:action] == "final_answer" ? generate_model_answer(run, intent, tool_result, context, request_content) : nil
@@ -202,19 +205,10 @@ module AgentLoop
         return decision if decision[:action] == "final_answer"
 
         execute_action(run, intent, state, decision[:action], message, context)
-        return completed_artifact_decision if decision[:action] == "draft_artifact"
         return decision if decision[:action] == "ask_clarification"
       end
 
       { action: "final_answer", reason: "Đã chạm giới hạn vòng lặp an toàn." }
-    end
-
-    def completed_artifact_decision
-      {
-        action: "final_answer",
-        reason: "Bản nháp đã được tạo; chuyển sang tổng hợp câu trả lời cuối.",
-        source: "guard"
-      }
     end
 
     def execute_action(run, intent, state, action, message, context)
@@ -311,16 +305,19 @@ module AgentLoop
           )
         end
       when "draft_artifact"
-        artifact_result = ArtifactBuilder.new(intent: intent, documents: state[:documents]).call
-        state[:artifact] = artifact_result[:artifact]
+        artifact_result = ArtifactBuilder.new(intent: intent, documents: state[:documents], message: message).call
+        artifact = artifact_result[:artifact].merge(content: artifact_result[:output])
+        state[:artifact] = artifact
         state[:artifact_tool] = artifact_result[:tool]
-        bullets = Array(artifact_result[:artifact][:bullets])
+        artifact_entry = add_artifact_entry(state, artifact: artifact, output: artifact_result[:output], tool: artifact_result[:tool], status: "drafted")
+        bullets = Array(artifact[:bullets])
         evidence = state[:documents].to_a.count
         append_working_note(
           state,
           action: "draft_artifact",
-          summary: "Đã tạo bản nháp #{artifact_result[:artifact][:title]} với #{bullets.count} ý chính, dựa trên #{evidence} tài liệu.",
-          artifact_title: artifact_result[:artifact][:title],
+          summary: "Đã tạo bản nháp #{artifact[:title]} với #{bullets.count} ý chính, dựa trên #{evidence} tài liệu.",
+          artifact_id: artifact_entry[:id],
+          artifact_title: artifact[:title],
           bullet_count: bullets.count,
           evidence_count: evidence
         )
@@ -328,11 +325,63 @@ module AgentLoop
           run,
           "artifact",
           "Soạn bản nháp",
-          "Dựa trên #{evidence} tài liệu tìm được, mình phác thảo bản nháp “#{artifact_result[:artifact][:title]}”#{bullets.any? ? " gồm #{bullets.count} ý chính" : ""}.",
+          "Dựa trên #{evidence} tài liệu tìm được, mình phác thảo bản nháp “#{artifact[:title]}”#{bullets.any? ? " gồm #{bullets.count} ý chính" : ""}.",
           {
             tools: [ artifact_result[:tool] ],
-            artifact: artifact_result[:artifact],
+            artifact: artifact,
+            artifact_entry: artifact_entry,
             output: artifact_result[:output]
+          }
+        )
+      when "verify_artifact"
+        latest = latest_artifact_entry(state)
+        verification = ArtifactVerifier.new(artifact: latest&.dig(:artifact) || state[:artifact], message: message).call
+        update_latest_artifact(state, status: verification[:status], checks: verification[:checks])
+        append_working_note(
+          state,
+          action: "verify_artifact",
+          summary: verification[:summary],
+          artifact_title: state[:artifact]&.dig(:title),
+          status: verification[:status],
+          failed_checks: verification[:checks].select { |check| !check[:passed] }.map { |check| check[:label] }
+        )
+        create_step(
+          run,
+          "verification",
+          "Kiểm tra bản nháp",
+          verification[:summary],
+          verification
+        )
+      when "revise_artifact"
+        latest = latest_artifact_entry(state)
+        revision = ArtifactReviser.new(
+          artifact: latest&.dig(:artifact) || state[:artifact],
+          message: message,
+          intent: intent,
+          documents: state[:documents],
+          checks: latest&.dig(:checks) || []
+        ).call
+        revised_artifact = revision[:artifact].merge(content: revision[:output])
+        state[:artifact] = revised_artifact
+        state[:artifact_tool] = revision[:tool]
+        artifact_entry = add_artifact_entry(state, artifact: revised_artifact, output: revision[:output], tool: revision[:tool], status: "revised")
+        append_working_note(
+          state,
+          action: "revise_artifact",
+          summary: revision[:summary],
+          artifact_id: artifact_entry[:id],
+          artifact_title: revised_artifact[:title]
+        )
+        create_step(
+          run,
+          "artifact",
+          "Sửa bản nháp",
+          revision[:summary],
+          {
+            tools: [ revision[:tool] ],
+            artifact: revised_artifact,
+            artifact_entry: artifact_entry,
+            output: revision[:output]
           }
         )
       when "ask_clarification"
@@ -356,6 +405,72 @@ module AgentLoop
       end
     end
 
+    def run_broad_retrieval_after_plan(run, state, plan, message)
+      planned_actions = Array(plan[:actions]).map(&:to_s)
+      return unless (planned_actions & %w[search_documents web_search]).any?
+
+      keywords = search_keywords(message)
+      document_thread = Thread.new { DocumentSearch.new(query: message, conversation: @conversation).call }
+      web_thread = Thread.new do
+        searcher = WebSearch.new(query: message)
+        {
+          results: searcher.call,
+          candidates: searcher.candidates,
+          raw_results: searcher.raw_results
+        }
+      end
+
+      documents = document_thread.value
+      web_payload = web_thread.value
+      web_results = web_payload[:results]
+      web_candidates = web_payload[:candidates]
+      web_raw_results = web_payload[:raw_results]
+      pages = web_results.any? ? WebPageReader.new(results: web_results).call : []
+      readable_pages = pages.select { |page| page[:status] == "read" && page[:content].present? }
+
+      state[:documents] = documents
+      state[:web_results] = web_results
+      state[:web_pages] = readable_pages
+      state[:search_attempts] = state[:search_attempts].to_i + 1
+      state[:web_attempts] = state[:web_attempts].to_i + 1
+
+      append_working_note(
+        state,
+        action: "parallel_retrieval",
+        summary: "Đã tìm đồng thời trong tài liệu chat/project/Drive và trên web; tài liệu: #{documents.count}, web đạt chuẩn: #{web_results.count}, trang đọc được: #{readable_pages.count}.",
+        evidence_count: documents.count + web_results.count + readable_pages.count,
+        keywords: keywords,
+        titles: documents.map { |document| document[:title] },
+        web_titles: web_results.map { |result| result[:title] },
+        web_page_titles: readable_pages.map { |page| page[:title] }
+      )
+      create_step(
+        run,
+        "retrieval",
+        "Tìm nguồn đồng thời",
+        "Mình tìm cùng lúc trong tài liệu chat/project, Drive index và web với từ khoá #{format_keywords(keywords)} — thấy #{documents.count} tài liệu, #{web_results.count} kết quả web đạt chuẩn và đọc được #{readable_pages.count} trang.",
+        {
+          tools: [ "document_search", "drive_document_search", "web_search", "web_page_reader" ],
+          query: message,
+          keywords: keywords,
+          documents: documents,
+          web_raw_results: web_raw_results,
+          web_results: web_results,
+          web_candidates: web_candidates,
+          pages: pages,
+          output: parallel_retrieval_output(documents, web_results, web_candidates, web_raw_results, pages)
+        }
+      )
+    end
+
+    def parallel_retrieval_output(documents, web_results, web_candidates, web_raw_results, pages)
+      [
+        DocumentSearchNoteBuilder.new(documents: documents).call,
+        WebSearchNoteBuilder.new(results: web_results, candidates: web_candidates, raw_results: web_raw_results).call,
+        WebPageReadNoteBuilder.new(pages: pages).call
+      ].join("\n\n")
+    end
+
     def build_tool_result(state)
       tools = []
       tools << "document_search" if state[:documents].present?
@@ -368,8 +483,36 @@ module AgentLoop
         web_results: state[:web_results] || [],
         web_pages: state[:web_pages] || [],
         artifact: state[:artifact],
+        artifacts: state[:artifacts] || [],
         working_notes: state[:working_notes] || []
       }
+    end
+
+    def add_artifact_entry(state, artifact:, output:, tool:, status:)
+      state[:artifacts] ||= []
+      entry = {
+        id: SecureRandom.uuid,
+        title: artifact[:title],
+        status: status,
+        tool: tool,
+        artifact: artifact,
+        output: output,
+        checks: []
+      }
+      state[:artifacts] << entry
+      entry
+    end
+
+    def latest_artifact_entry(state)
+      Array(state[:artifacts]).last
+    end
+
+    def update_latest_artifact(state, status:, checks:)
+      latest = latest_artifact_entry(state)
+      return unless latest
+
+      latest[:status] = status
+      latest[:checks] = checks
     end
 
     def create_run
@@ -508,6 +651,8 @@ module AgentLoop
       when "search_documents" then "tìm tài liệu nội bộ"
       when "web_search" then "tra cứu trên web"
       when "draft_artifact" then "soạn bản nháp"
+      when "verify_artifact" then "kiểm tra bản nháp"
+      when "revise_artifact" then "sửa bản nháp"
       when "ask_clarification" then "hỏi làm rõ khi thiếu thông tin"
       when "final_answer" then "tổng hợp câu trả lời"
       else action.to_s

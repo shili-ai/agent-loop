@@ -9,6 +9,8 @@ module AgentLoop
       "search_documents" => "Tìm tài liệu / dẫn chứng nội bộ liên quan tới yêu cầu.",
       "web_search" => "Tìm thông tin mới hoặc thông tin ngoài kho nội bộ trên web.",
       "draft_artifact" => "Soạn bản nháp (proposal, battlecard, email, RFP...) dựa trên tài liệu đã có.",
+      "verify_artifact" => "Kiểm tra bản nháp vừa tạo: đúng yêu cầu, đủ cấu trúc, đủ nguồn và không bịa dữ liệu.",
+      "revise_artifact" => "Sửa bản nháp khi bước kiểm tra phát hiện thiếu cấu trúc, thiếu nội dung hoặc chưa đúng yêu cầu.",
       "ask_clarification" => "Hỏi lại người dùng khi yêu cầu quá ngắn hoặc thiếu ngữ cảnh.",
       "final_answer" => "Dừng vòng lặp và tổng hợp câu trả lời cuối cho người dùng."
     }.freeze
@@ -39,11 +41,17 @@ module AgentLoop
       return forced_final if @iteration >= @max_iterations
 
       guard_answered_clarification(
-        guard_completed_artifact(
-          guard_repeated_web_search(
-            guard_repeated_search(
-              guard_stop_after_empty_web_search(
-                guard_prefer_web_search(decide)
+        guard_verified_artifact(
+          guard_artifact_needs_verification(
+            guard_artifact_needs_revision(
+              guard_completed_artifact(
+                guard_repeated_web_search(
+                  guard_repeated_search(
+                    guard_stop_after_empty_web_search(
+                      guard_prefer_web_search(decide)
+                    )
+                  )
+                )
               )
             )
           )
@@ -66,7 +74,14 @@ module AgentLoop
     # tài liệu, ép chuyển sang bước tiếp theo thay vì tìm lại.
     def guard_repeated_search(decision)
       return decision unless decision[:action] == "search_documents"
-      return decision if documents.any?
+      if documents.any? && search_attempts.positive?
+        alternative = @intent == "document_search" || artifact? ? "final_answer" : "draft_artifact"
+        return build(
+          alternative,
+          "Đã có tài liệu từ bước tìm nguồn trước đó; không tìm lại và chuyển sang #{alternative}.",
+          source: "guard"
+        )
+      end
       return decision if search_attempts < MAX_SEARCH_ATTEMPTS
 
       alternative =
@@ -111,8 +126,44 @@ module AgentLoop
       return decision unless artifact?
 
       build(
+        "verify_artifact",
+        "Bản nháp đã được tạo ở vòng trước; mình chuyển sang kiểm tra bản nháp trước khi trả lời cuối.",
+        source: "guard"
+      )
+    end
+
+    def guard_artifact_needs_revision(decision)
+      return decision unless latest_artifact_status == "needs_revision"
+      return decision if decision[:action] == "revise_artifact"
+
+      build(
+        "revise_artifact",
+        "Bước kiểm tra cho thấy bản nháp còn thiếu hoặc chưa đúng, nên mình sửa trước khi tổng hợp.",
+        source: "guard"
+      )
+    end
+
+    def guard_artifact_needs_verification(decision)
+      return decision unless artifact?
+      return decision if %w[verify_artifact revise_artifact].include?(decision[:action])
+      return decision if latest_artifact_status == "verified"
+      return decision if latest_artifact_status == "needs_revision"
+
+      build(
+        "verify_artifact",
+        "Đã có bản nháp nhưng chưa được kiểm tra, nên mình verify trước khi trả lời cuối.",
+        source: "guard"
+      )
+    end
+
+    def guard_verified_artifact(decision)
+      return decision unless artifact?
+      return decision unless latest_artifact_status == "verified"
+      return decision if decision[:action] == "final_answer"
+
+      build(
         "final_answer",
-        "Bản nháp đã được tạo ở vòng trước; dừng lặp draft_artifact và chuyển sang tổng hợp câu trả lời cuối.",
+        "Bản nháp đã qua kiểm tra, mình chuyển sang tổng hợp câu trả lời cuối.",
         source: "guard"
       )
     end
@@ -240,6 +291,7 @@ module AgentLoop
         web_results_count: web_results.count,
         web_attempts: web_attempts,
         has_artifact: artifact? ? "có" : "chưa",
+        artifact_status: latest_artifact_status || "chưa có",
         clarified: clarified? || answered_clarification? ? "rồi" : "chưa",
         working_notes: working_notes_prompt,
         recent_messages: recent_messages_prompt
@@ -261,6 +313,11 @@ module AgentLoop
 
     def artifact?
       @state[:artifact].present?
+    end
+
+    def latest_artifact_status
+      latest_artifact = Array(@state[:artifacts]).last
+      latest_artifact&.dig(:status) || latest_artifact&.dig("status")
     end
 
     def web_results

@@ -19,6 +19,7 @@ module AgentLoop
         web_evidence: web_evidence,
         web_pages: web_pages,
         draft: draft,
+        artifacts: artifacts,
         missing_context: missing_context
       }
     end
@@ -30,7 +31,9 @@ module AgentLoop
         {
           title: document[:title],
           type: document[:type],
-          snippet: document[:snippet]
+          snippet: document[:snippet],
+          source: document[:source],
+          url: document[:url]
         }
       end
     end
@@ -87,8 +90,20 @@ module AgentLoop
       {
         title: artifact[:title],
         bullets: artifact[:bullets],
+        content: artifact[:content],
         sources: artifact[:sources]
-      }
+      }.compact
+    end
+
+    def artifacts
+      Array(@tool_result[:artifacts]).map do |entry|
+        {
+          id: entry[:id] || entry["id"],
+          title: entry[:title] || entry["title"],
+          status: entry[:status] || entry["status"],
+          checks: entry[:checks] || entry["checks"]
+        }.compact
+      end
     end
 
     def missing_context

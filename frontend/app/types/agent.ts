@@ -81,6 +81,23 @@ export type AgentSystemPrompt = {
   };
 };
 
+export type AgentConnector = {
+  key: "google_drive" | string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  status: "connected" | "disabled" | "missing_index" | "invalid_index" | "not_configured" | string;
+  index_path?: string;
+  document_count?: number;
+  last_checked_at?: string | null;
+  message?: string;
+};
+
+export type AgentConnectorInput = {
+  enabled: boolean;
+  index_path?: string;
+};
+
 export type AgentProject = {
   id: number;
   title: string;

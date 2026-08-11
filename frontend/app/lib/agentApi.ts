@@ -1,6 +1,8 @@
 import type {
   AgentConversation,
   AgentConversationSummary,
+  AgentConnector,
+  AgentConnectorInput,
   AgentDocument,
   AgentProject,
   AgentSkill,
@@ -46,6 +48,23 @@ export function listSkills() {
 
 export function listSystemPrompts() {
   return request<AgentSystemPrompt[]>("/api/agent_system_prompts");
+}
+
+export function listConnectors() {
+  return request<AgentConnector[]>("/api/agent_connectors");
+}
+
+export function updateConnector(key: string, input: AgentConnectorInput) {
+  return request<AgentConnector>(`/api/agent_connectors/${key}`, {
+    method: "PATCH",
+    body: JSON.stringify({ agent_connector: input }),
+  });
+}
+
+export function testConnector(key: string) {
+  return request<AgentConnector>(`/api/agent_connectors/${key}/test`, {
+    method: "POST",
+  });
 }
 
 export function createSkill(input: AgentSkillInput) {

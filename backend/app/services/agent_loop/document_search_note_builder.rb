@@ -5,9 +5,11 @@ module AgentLoop
     end
 
     def call
-      lines = ["### Tài liệu tìm thấy"]
+      lines = [ "### Tài liệu tìm thấy" ]
       @documents.each do |document|
-        lines << "- **#{document[:title]}** (`#{document[:type]}`): #{document[:snippet]}"
+        source = document[:url].presence || document[:source]
+        suffix = source.present? ? " — #{source}" : ""
+        lines << "- **#{document[:title]}** (`#{document[:type]}`)#{suffix}: #{document[:snippet]}"
       end
       lines.join("\n")
     end

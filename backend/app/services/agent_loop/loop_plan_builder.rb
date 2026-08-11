@@ -27,9 +27,12 @@ module AgentLoop
     end
 
     def actions
-      base = ["search_documents"]
+      base = [ "search_documents" ]
       base << "web_search" if needs_web_search?
-      base << "draft_artifact" unless @intent == "document_search"
+      unless @intent == "document_search"
+        base << "draft_artifact"
+        base << "verify_artifact"
+      end
       base << "ask_clarification" if needs_clarification?
       base << "final_answer"
       base
@@ -44,7 +47,7 @@ module AgentLoop
     end
 
     def markdown_output
-      lines = ["### Plan ngắn", "- Mục tiêu: #{goal}", "- Action dự kiến:"]
+      lines = [ "### Plan ngắn", "- Mục tiêu: #{goal}", "- Action dự kiến:" ]
       actions.each { |action| lines << "  - `#{action}`" }
       lines.join("\n")
     end

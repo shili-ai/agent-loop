@@ -11,6 +11,9 @@ module AgentLoop
 
     def call
       return decision("final_answer", "Đã chạm giới hạn vòng lặp an toàn.") if @iteration >= @max_iterations
+      return decision("revise_artifact", "Bản nháp chưa đạt kiểm tra, cần sửa trước khi trả lời cuối.") if latest_artifact_status == "needs_revision"
+      return decision("verify_artifact", "Đã có bản nháp nhưng chưa kiểm tra.") if artifact_present? && latest_artifact_status != "verified"
+      return decision("final_answer", "Bản nháp đã qua kiểm tra.") if latest_artifact_status == "verified"
       return decision("web_search", "Yêu cầu cần thông tin trên web.") if should_search_web?
       return decision("final_answer", "Đã có kết quả web để tổng hợp.") if @intent == "web_search" && web_results.present?
       return decision("final_answer", "Đã thử tìm web nhưng không có nguồn đáng tin phù hợp.") if empty_web_search_done?
@@ -51,6 +54,15 @@ module AgentLoop
 
     def should_draft?
       @intent != "document_search" && @state[:artifact].nil?
+    end
+
+    def artifact_present?
+      @state[:artifact].present?
+    end
+
+    def latest_artifact_status
+      latest_artifact = Array(@state[:artifacts]).last
+      latest_artifact&.dig(:status) || latest_artifact&.dig("status")
     end
 
     def should_ask_clarification?

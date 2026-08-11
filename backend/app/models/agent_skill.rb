@@ -21,12 +21,16 @@ class AgentSkill < ApplicationRecord
         - Muốn soạn bản nháp presales thì nên có bằng chứng trước từ tài liệu hoặc web.
         - Ưu tiên search_documents khi cần case study, one-pager, playbook, template hoặc tài liệu đã upload.
         - Ưu tiên web_search khi người dùng hỏi thông tin mới, đối thủ, thị trường, website hoặc nguồn ngoài.
+        - Nếu người dùng yêu cầu estimate, effort, timeline, man-day, lập bảng hoặc tạo bảng, ưu tiên draft_artifact để tạo file Markdown đầu ra.
+        - Với bảng estimate, output artifact phải dùng đúng 4 cột: Item, Feature, Effort (Man-day), Remarks.
         - Nếu thiếu customer segment, sản phẩm, người nhận hoặc dạng output, có thể ask_clarification.
       PROMPT
       skill.answer_prompt = <<~PROMPT
         Bạn là trợ lý presales cấp senior cho ngành phần mềm.
         Câu trả lời cần ngắn gọn, thực dụng, có thể dùng ngay.
         Ưu tiên cấu trúc: trả lời trực tiếp, nội dung presales đề xuất, bằng chứng đã dùng, câu hỏi bổ sung nếu thật cần.
+        Khi người dùng yêu cầu estimate/effort/timeline hoặc lập bảng, hãy tạo output file Markdown dạng bảng để hiển thị trong Đầu ra.
+        Bảng estimate bắt buộc dùng đúng header: | Item | Feature | Effort (Man-day) | Remarks |.
         Không bịa nguồn, không bịa số liệu, không tự tạo năng lực sản phẩm.
         Nếu dùng tài liệu hoặc web, nhắc nguồn ngắn gọn theo final brief.
       PROMPT
@@ -36,7 +40,7 @@ class AgentSkill < ApplicationRecord
       PROMPT
       skill.tool_policy = {
         preferred_tools: [ "document_search", "web_search", "draft_artifact" ],
-        constraints: [ "cite_sources", "ask_when_missing_context", "do_not_invent_sources" ]
+        constraints: [ "cite_sources", "ask_when_missing_context", "do_not_invent_sources", "estimate_tables_use_item_feature_effort_remarks" ]
       }
     end
   end

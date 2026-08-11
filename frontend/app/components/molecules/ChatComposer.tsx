@@ -42,7 +42,6 @@ export default function ChatComposer({
         key: "drive",
         label: "Google Drive",
         icon: <CloudOutlined />,
-        disabled: true,
       },
       {
         key: "mcp",
@@ -53,6 +52,7 @@ export default function ChatComposer({
     ],
     onClick: ({ key }: { key: string }) => {
       if (key === "upload" && canUpload) fileInputRef.current?.click();
+      if (key === "drive") window.location.href = "/connectors";
     },
   };
 
