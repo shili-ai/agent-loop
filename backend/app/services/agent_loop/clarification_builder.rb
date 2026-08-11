@@ -126,6 +126,9 @@ module AgentLoop
     end
 
     def fallback_questions
+      return risky_change_questions if clarification_policy.category == "risky_change"
+      return ambiguous_change_questions if clarification_policy.category == "ambiguous_change"
+
       output_options = inferred_output_options
       [
         {
@@ -155,6 +158,52 @@ module AgentLoop
       ]
     end
 
+    def risky_change_questions
+      [
+        {
+          id: "change_scope",
+          question: "Bạn muốn áp dụng thay đổi ở mức nào?",
+          type: "choice",
+          options: [ "Chỉ UI/wording", "Backend behavior nhưng giữ fallback", "Xoá/đổi hẳn code liên quan", "Cả frontend, backend và docs" ]
+        },
+        {
+          id: "data_policy",
+          question: "Dữ liệu hoặc cấu hình local hiện có nên xử lý thế nào?",
+          type: "choice",
+          options: [ "Giữ nguyên dữ liệu local", "Chỉ dọn config không còn dùng", "Xoá cả dữ liệu phát sinh", "Hỏi riêng trước khi xoá dữ liệu" ]
+        },
+        {
+          id: "compatibility",
+          question: "Có cần giữ tương thích ngược trong một thời gian không?",
+          type: "choice",
+          options: [ "Có, giữ fallback/migration", "Không, đổi thẳng sang cách mới", "Chỉ giữ API cũ tạm thời", "Chưa chắc, đề xuất phương án an toàn" ]
+        }
+      ]
+    end
+
+    def ambiguous_change_questions
+      [
+        {
+          id: "target_scope",
+          question: "Bạn muốn mình tác động vào phần nào trước?",
+          type: "choice",
+          options: [ "Frontend/UI", "Backend/agent loop", "Prompt/skill", "Cả luồng end-to-end" ]
+        },
+        {
+          id: "success_criteria",
+          question: "Tiêu chí hoàn thành chính là gì?",
+          type: "choice",
+          options: [ "Đúng hành vi trước", "UI nhìn hợp lý hơn", "Câu trả lời chất lượng hơn", "Giảm lỗi và dễ debug hơn" ]
+        },
+        {
+          id: "change_depth",
+          question: "Mức độ thay đổi bạn muốn là gì?",
+          type: "choice",
+          options: [ "Nhỏ, ít rủi ro", "Vừa phải, có refactor nhẹ", "Mạnh tay nếu kiến trúc tốt hơn", "Hỏi lại trước mỗi thay đổi lớn" ]
+        }
+      ]
+    end
+
     def inferred_output_options
       text = @message.downcase
       options = []
@@ -163,6 +212,10 @@ module AgentLoop
       options << "Battlecard so sánh đối thủ" if text.include?("battlecard") || text.include?("đối thủ")
       options << "Câu trả lời RFP/RFI" if text.include?("rfp") || text.include?("rfi")
       (options + [ "Tóm tắt tư vấn presales", "Checklist hành động tiếp theo", "Bản nháp có thể chỉnh sửa" ]).uniq.first(MAX_OPTIONS)
+    end
+
+    def clarification_policy
+      @clarification_policy ||= ClarificationPolicy.new(message: @message, context: @context)
     end
   end
 end

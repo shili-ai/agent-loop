@@ -90,7 +90,7 @@ module AgentLoop
         summary: "Mục tiêu: #{plan[:goal]}; action dự kiến: #{Array(plan[:actions]).join(', ')}.",
         planned_actions: Array(plan[:actions])
       )
-      run_broad_retrieval_after_plan(run, state, plan, request_content)
+      run_broad_retrieval_after_plan(run, state, plan, request_content, context)
       loop_result = run_dynamic_loop(run, intent, state, plan, request_content, context)
       tool_result = build_tool_result(state)
       model_answer = loop_result[:action] == "final_answer" ? generate_model_answer(run, intent, tool_result, context, request_content) : nil
@@ -407,7 +407,9 @@ module AgentLoop
       end
     end
 
-    def run_broad_retrieval_after_plan(run, state, plan, message)
+    def run_broad_retrieval_after_plan(run, state, plan, message, context)
+      return if ClarificationPolicy.new(message: message, state: state, context: context).required?
+
       planned_actions = Array(plan[:actions]).map(&:to_s)
       return unless (planned_actions & %w[search_documents web_search]).any?
 

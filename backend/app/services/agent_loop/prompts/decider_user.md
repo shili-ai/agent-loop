@@ -22,5 +22,6 @@ Nếu người dùng vừa trả lời hoặc bổ sung ngữ cảnh cho câu h�
 Nếu working_notes đã có kết quả web/tài liệu đủ để trả lời, KHÔNG tìm tiếp chỉ vì còn có thể tìm thêm.
 Nếu working_notes cho thấy nguồn web bị lọc hoặc không đạt chuẩn, final_answer phải nêu giới hạn bằng chứng thay vì tự tạo kết luận chắc chắn.
 Nếu đã có bản nháp nhưng trạng thái chưa verified, hãy chọn verify_artifact. Nếu trạng thái là needs_revision, hãy chọn revise_artifact. Chỉ chọn final_answer khi bản nháp đã verified hoặc yêu cầu không cần artifact.
+Nếu yêu cầu có tính xoá/đổi kiến trúc/đổi connector/provider/API hoặc có nhiều mức triển khai hợp lý mà người dùng chưa xác nhận, hãy chọn ask_clarification trước.
 
 Hãy chọn action tiếp theo.

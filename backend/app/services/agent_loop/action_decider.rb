@@ -11,6 +11,7 @@ module AgentLoop
 
     def call
       return decision("final_answer", "Đã chạm giới hạn vòng lặp an toàn.") if @iteration >= @max_iterations
+      return decision("ask_clarification", clarification_policy.reason) if clarification_policy.required?
       return decision("revise_artifact", "Bản nháp chưa đạt kiểm tra, cần sửa trước khi trả lời cuối.") if latest_artifact_status == "needs_revision"
       return decision("verify_artifact", "Đã có bản nháp nhưng chưa kiểm tra.") if artifact_present? && latest_artifact_status != "verified"
       return decision("final_answer", "Bản nháp đã qua kiểm tra.") if latest_artifact_status == "verified"
@@ -69,6 +70,10 @@ module AgentLoop
       return false if answered_clarification?
 
       @message.split.length < 8 && !@state[:clarification] && @state[:artifact].nil?
+    end
+
+    def clarification_policy
+      @clarification_policy ||= ClarificationPolicy.new(message: @message, state: @state, context: @context)
     end
 
     def answered_clarification?

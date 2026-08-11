@@ -41,14 +41,16 @@ module AgentLoop
       return forced_final if @iteration >= @max_iterations
 
       guard_answered_clarification(
-        guard_verified_artifact(
-          guard_artifact_needs_verification(
-            guard_artifact_needs_revision(
-              guard_completed_artifact(
-                guard_repeated_web_search(
-                  guard_repeated_search(
-                    guard_stop_after_empty_web_search(
-                      guard_prefer_web_search(decide)
+        guard_clarification_required(
+          guard_verified_artifact(
+            guard_artifact_needs_verification(
+              guard_artifact_needs_revision(
+                guard_completed_artifact(
+                  guard_repeated_web_search(
+                    guard_repeated_search(
+                      guard_stop_after_empty_web_search(
+                        guard_prefer_web_search(decide)
+                      )
                     )
                   )
                 )
@@ -128,6 +130,17 @@ module AgentLoop
       build(
         "verify_artifact",
         "Bản nháp đã được tạo ở vòng trước; mình chuyển sang kiểm tra bản nháp trước khi trả lời cuối.",
+        source: "guard"
+      )
+    end
+
+    def guard_clarification_required(decision)
+      return decision if decision[:action] == "ask_clarification"
+      return decision unless clarification_policy.required?
+
+      build(
+        "ask_clarification",
+        clarification_policy.reason,
         source: "guard"
       )
     end
@@ -362,6 +375,10 @@ module AgentLoop
         "- #{role}: #{content.to_s.truncate(500)}"
       end
       (lines + message_lines).join("\n")
+    end
+
+    def clarification_policy
+      @clarification_policy ||= ClarificationPolicy.new(message: @message, state: @state, context: @context)
     end
   end
 end
