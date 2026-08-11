@@ -30,7 +30,13 @@ import FileUploadButton from "./molecules/FileUploadButton";
 import ProjectModal from "./molecules/ProjectModal";
 import { ProjectPageFrame } from "./ProjectDirectory";
 
-const MODEL_OPTIONS = ["llama3.2:3b", "llama3.1:8b", "qwen3:8b"];
+const MODEL_OPTIONS = [
+  "llama3.2:3b",
+  "llama3.1:8b",
+  "qwen3:8b",
+  "deepseek:deepseek-v4-flash",
+  "deepseek:deepseek-v4-pro",
+];
 
 export default function ProjectDetail() {
   const params = useParams<{ id: string }>();

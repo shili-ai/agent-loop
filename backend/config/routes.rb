@@ -4,7 +4,6 @@ Rails.application.routes.draw do
     resources :agent_connectors, param: :key, only: [ :index, :show, :update ] do
       post :test, on: :member
       post :connect, on: :member
-      post :sync, on: :member
       delete :disconnect, on: :member
       get :callback, on: :member
     end

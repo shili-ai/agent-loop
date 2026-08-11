@@ -1,36 +1,21 @@
-require "json"
-
 module AgentLoop
   class DriveDocumentSearch
-    DEFAULT_INDEX_PATH = Rails.root.join("storage/google_drive_documents.json").to_s
-
-    def initialize(query:, limit: DocumentSearch::DEFAULT_LIMIT, index_path: nil)
+    def initialize(query:, limit: DocumentSearch::DEFAULT_LIMIT)
       @query = query.to_s
       @limit = limit
-      @index_path = index_path.presence || AgentConnectorRegistry.google_drive_index_path
     end
 
     def call
       return [] unless AgentConnectorRegistry.google_drive_enabled?
-      return [] unless File.exist?(@index_path)
+      return [] unless GoogleDriveConnector.connected?
 
-      documents = JSON.parse(File.read(@index_path), symbolize_names: true)
-      ranked_documents(documents).first(@limit)
-    rescue JSON::ParserError
+      GoogleDriveConnector.search_documents(query: @query, limit: @limit).map { |document| normalize_document(document) }
+    rescue StandardError => e
+      Rails.logger.warn("[AgentLoop::DriveDocumentSearch] live search failed: #{e.class}: #{e.message}")
       []
     end
 
     private
-
-    def ranked_documents(documents)
-      Array(documents).filter_map do |document|
-        normalized = normalize_document(document)
-        score = score_document(normalized)
-        next if score <= 0
-
-        [ score, normalized ]
-      end.sort_by { |score, document| [ -score, document[:title].to_s ] }.map(&:second)
-    end
 
     def normalize_document(document)
       content = document[:content] || document[:text] || document[:snippet] || document[:summary]
@@ -46,14 +31,6 @@ module AgentLoop
         document_id: file_id,
         url: url
       }.compact
-    end
-
-    def score_document(document)
-      tokens = keywords
-      return 1 if tokens.empty?
-
-      haystack = "#{document[:title]} #{document[:filename]} #{document[:snippet]} #{document[:url]}".downcase
-      tokens.sum { |token| haystack.scan(Regexp.escape(token)).count }
     end
 
     def snippet_for(content)

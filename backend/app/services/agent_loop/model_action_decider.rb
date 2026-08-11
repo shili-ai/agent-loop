@@ -225,7 +225,7 @@ module AgentLoop
         action: normalized,
         reason: reason.to_s.strip.presence || ACTIONS[normalized],
         source: source,
-        provider: "ollama",
+        provider: @client.provider,
         model: @client.model,
         metrics: metrics,
         prompt_messages: @last_prompt_messages,

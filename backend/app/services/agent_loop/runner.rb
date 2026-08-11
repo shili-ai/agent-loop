@@ -137,14 +137,14 @@ module AgentLoop
 
     def build_model_analysis(run, request_content, context)
       analyzer = ModelAnalysisBuilder.new(message: request_content, context: context, client: local_model_client)
-      initial_summary = "Mình gọi model #{analyzer.client.model} (qua Ollama) để hiểu yêu cầu, chọn intent và lập plan hành động."
+      initial_summary = "Mình gọi model #{analyzer.client.model} (qua #{analyzer.client.provider_label}) để hiểu yêu cầu, chọn intent và lập plan hành động."
       step = create_step(
         run,
         "llm",
         "Gọi model phân tích",
         initial_summary,
         {
-          provider: "ollama",
+          provider: analyzer.client.provider,
           model: analyzer.client.model,
           prompt_messages: analyzer.prompt_messages,
           prompt_layers: analyzer.prompt_layer_summary,
@@ -450,7 +450,7 @@ module AgentLoop
         run,
         "retrieval",
         "Tìm nguồn đồng thời",
-        "Mình tìm cùng lúc trong tài liệu chat/project, Drive index và web với từ khoá #{format_keywords(keywords)} — thấy #{documents.count} tài liệu, #{web_results.count} kết quả web đạt chuẩn và đọc được #{readable_pages.count} trang.",
+        "Mình tìm cùng lúc trong tài liệu chat/project, Google Drive live search và web với từ khoá #{format_keywords(keywords)} — thấy #{documents.count} tài liệu, #{web_results.count} kết quả web đạt chuẩn và đọc được #{readable_pages.count} trang.",
         {
           tools: [ "document_search", "drive_document_search", "web_search", "web_page_reader" ],
           query: message,
@@ -537,9 +537,9 @@ module AgentLoop
         run,
         "llm",
         "Gọi model local",
-        "Mình gọi model #{generator.client.model} (qua Ollama) để tự soạn nội dung câu trả lời dựa trên brief đã chuẩn bị.",
+        "Mình gọi model #{generator.client.model} (qua #{generator.client.provider_label}) để tự soạn nội dung câu trả lời dựa trên brief đã chuẩn bị.",
         {
-          provider: "ollama",
+          provider: generator.client.provider,
           model: generator.client.model,
           prompt_messages: generator.prompt_messages,
           prompt_layers: generator.prompt_layer_summary,
@@ -558,7 +558,7 @@ module AgentLoop
       answer
     rescue StandardError => e
       step&.update!(
-        title: "Fallback khi model local lỗi",
+        title: "Fallback khi model lỗi",
         summary: "Model local bị lỗi, dùng bộ tổng hợp mặc định.",
         data: { error: e.message, prompt_messages: generator&.prompt_messages, prompt_layers: generator&.prompt_layer_summary, output: nil, status: "failed" }
       )

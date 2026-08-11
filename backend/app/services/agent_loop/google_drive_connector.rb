@@ -77,20 +77,27 @@ module AgentLoop
       AgentConnectorRegistry.update(AgentConnectorRegistry::GOOGLE_DRIVE_KEY, enabled: true, oauth_state: nil)
     end
 
-    def self.sync!(limit: 50)
+    def self.live_test(limit: 10)
       access_token = valid_access_token
       files = list_files(access_token, limit: limit)
-      documents = files.filter_map { |file| document_from_file(file, access_token) }
-      skipped_count = files.count - documents.count
-      index_path = AgentConnectorRegistry.google_drive_index_path
-      FileUtils.mkdir_p(File.dirname(index_path))
-      File.write(index_path, JSON.pretty_generate(documents))
-      AgentConnectorRegistry.update(AgentConnectorRegistry::GOOGLE_DRIVE_KEY, enabled: true)
-      AgentConnectorRegistry.test(AgentConnectorRegistry::GOOGLE_DRIVE_KEY).merge(
+      indexable = files.reject { |file| folder_file?(file[:mimeType].to_s) }
+      {
+        key: AgentConnectorRegistry::GOOGLE_DRIVE_KEY,
+        enabled: true,
+        status: "connected",
+        browser_connected: connected?,
+        auth_url_available: configured?,
+        document_count: indexable.count,
         listed_count: files.count,
-        indexed_count: documents.count,
-        skipped_count: skipped_count
-      )
+        last_checked_at: Time.now.utc.iso8601(6),
+        message: "Đã kết nối Google Drive API live; tìm thấy #{indexable.count} file có thể xét trong #{files.count} file gần nhất."
+      }
+    end
+
+    def self.search_documents(query:, limit:)
+      access_token = valid_access_token
+      files = search_files(access_token, query: query, limit: [ limit * 4, 20 ].max)
+      files.filter_map { |file| document_from_file(file, access_token) }.first(limit)
     end
 
     def self.token
@@ -147,6 +154,30 @@ module AgentLoop
       files.first(limit)
     end
 
+    def self.search_files(access_token, query:, limit:)
+      files = []
+      page_token = nil
+      drive_query = drive_search_query(query)
+
+      loop do
+        page_size = [ [ limit - files.count, 100 ].min, 1 ].max
+        uri = URI(FILES_URL)
+        params = {
+          pageSize: page_size,
+          fields: "nextPageToken,files(id,name,mimeType,modifiedTime,webViewLink)",
+          q: drive_query
+        }
+        params[:pageToken] = page_token if page_token.present?
+        uri.query = URI.encode_www_form(params)
+        response = get_json(uri, access_token)
+        files.concat(Array(response[:files]))
+        page_token = response[:nextPageToken]
+        break if page_token.blank? || files.count >= limit
+      end
+
+      files.first(limit)
+    end
+
     def self.document_from_file(file, access_token)
       content = utf8_text(file_content(file, access_token))
       return nil if content.blank?
@@ -178,6 +209,10 @@ module AgentLoop
 
     def self.google_workspace_file?(mime_type)
       mime_type.start_with?("application/vnd.google-apps.")
+    end
+
+    def self.folder_file?(mime_type)
+      mime_type == "application/vnd.google-apps.folder"
     end
 
     def self.text_file?(mime_type)
@@ -281,6 +316,22 @@ module AgentLoop
       expires_at = Time.now.to_i + payload[:expires_in].to_i
       merged = token.merge(payload.slice(:access_token, :refresh_token, :scope, :token_type)).merge(expires_at: expires_at)
       File.write(TOKEN_PATH, JSON.pretty_generate(merged))
+    end
+
+    def self.drive_search_query(query)
+      tokens = query.to_s.downcase.scan(/[\p{L}\p{N}]+/).select { |word| word.length >= 3 }.uniq.first(6)
+      base = [
+        "trashed = false",
+        "mimeType != 'application/vnd.google-apps.folder'"
+      ]
+      if tokens.any?
+        token_query = tokens.map do |token|
+          escaped = token.gsub("\\", "\\\\\\").gsub("'", "\\\\'")
+          "name contains '#{escaped}' or fullText contains '#{escaped}'"
+        end.join(" or ")
+        base << "(#{token_query})"
+      end
+      base.join(" and ")
     end
   end
 end

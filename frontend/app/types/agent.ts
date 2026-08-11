@@ -86,8 +86,7 @@ export type AgentConnector = {
   name: string;
   description: string;
   enabled: boolean;
-  status: "connected" | "disabled" | "missing_index" | "invalid_index" | "not_configured" | string;
-  index_path?: string;
+  status: "connected" | "disabled" | "missing_auth" | "connection_error" | "not_configured" | string;
   browser_connected?: boolean;
   auth_url_available?: boolean;
   document_count?: number;
@@ -97,7 +96,6 @@ export type AgentConnector = {
 
 export type AgentConnectorInput = {
   enabled: boolean;
-  index_path?: string;
 };
 
 export type AgentProject = {

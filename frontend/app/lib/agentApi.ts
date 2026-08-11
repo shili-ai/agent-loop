@@ -73,12 +73,6 @@ export function connectGoogleDrive() {
   });
 }
 
-export function syncGoogleDrive() {
-  return request<AgentConnector>("/api/agent_connectors/google_drive/sync", {
-    method: "POST",
-  });
-}
-
 export function disconnectGoogleDrive() {
   return request<AgentConnector>("/api/agent_connectors/google_drive/disconnect", {
     method: "DELETE",

@@ -21,7 +21,13 @@ import AgentChatPanel from "./organisms/AgentChatPanel";
 import AgentSidebar from "./organisms/AgentSidebar";
 import AgentChatTemplate from "./templates/AgentChatTemplate";
 
-const MODEL_OPTIONS = ["llama3.2:3b", "llama3.1:8b", "qwen3:8b"];
+const MODEL_OPTIONS = [
+  "llama3.2:3b",
+  "llama3.1:8b",
+  "qwen3:8b",
+  "deepseek:deepseek-v4-flash",
+  "deepseek:deepseek-v4-pro",
+];
 
 function conversationIdFromPath(pathname: string): number | null {
   const match = /^\/chat\/(\d+)/.exec(pathname);

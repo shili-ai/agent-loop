@@ -31,14 +31,6 @@ module Api
       redirect_to "#{AgentLoop::GoogleDriveConnector.frontend_url}?connector=google_drive&error=#{ERB::Util.url_encode(e.message)}", allow_other_host: true
     end
 
-    def sync
-      ensure_google_drive!
-
-      render json: AgentLoop::GoogleDriveConnector.sync!
-    rescue StandardError => e
-      render json: { error: e.message }, status: :unprocessable_content
-    end
-
     def disconnect
       ensure_google_drive!
 
@@ -48,7 +40,7 @@ module Api
     private
 
     def connector_params
-      params.require(:agent_connector).permit(:enabled, :index_path)
+      params.require(:agent_connector).permit(:enabled)
     end
 
     def ensure_google_drive!

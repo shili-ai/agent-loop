@@ -3,21 +3,18 @@
 import {
   CheckCircleOutlined,
   CloudOutlined,
-  DatabaseOutlined,
   DisconnectOutlined,
   LoginOutlined,
   ReloadOutlined,
   SaveOutlined,
-  SyncOutlined,
   WarningOutlined,
 } from "@ant-design/icons";
-import { Button, Input, Spin, Switch, Typography } from "antd";
+import { Button, Spin, Switch, Typography } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import {
   connectGoogleDrive,
   disconnectGoogleDrive,
   listConnectors,
-  syncGoogleDrive,
   testConnector,
   updateConnector,
 } from "../lib/agentApi";
@@ -28,13 +25,12 @@ import { ProjectPageFrame } from "./ProjectDirectory";
 export default function ConnectorManager() {
   const [connectors, setConnectors] = useState<AgentConnector[]>([]);
   const [selectedKey, setSelectedKey] = useState("google_drive");
-  const [draft, setDraft] = useState({ enabled: false, index_path: "" });
+  const [draft, setDraft] = useState({ enabled: false });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [connecting, setConnecting] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -46,7 +42,7 @@ export default function ConnectorManager() {
   useEffect(() => {
     void load();
     const params = new URLSearchParams(window.location.search);
-    if (params.get("connected") === "1") setNotice("Google Drive đã kết nối trên trình duyệt. Bạn có thể bấm Sync Drive để tạo index.");
+    if (params.get("connected") === "1") setNotice("Google Drive đã kết nối trên trình duyệt. Agent sẽ search trực tiếp qua Drive API khi cần.");
     if (params.get("error")) setError(params.get("error"));
   }, []);
 
@@ -55,7 +51,6 @@ export default function ConnectorManager() {
 
     setDraft({
       enabled: selected.enabled,
-      index_path: selected.index_path ?? "",
     });
   }, [selected]);
 
@@ -103,22 +98,6 @@ export default function ConnectorManager() {
       setError("Không tạo được link kết nối Google Drive. Kiểm tra GOOGLE_DRIVE_CLIENT_ID và GOOGLE_DRIVE_CLIENT_SECRET.");
     } finally {
       setConnecting(false);
-    }
-  }
-
-  async function syncDrive() {
-    setSyncing(true);
-    setError(null);
-    setNotice(null);
-
-    try {
-      const updated = await syncGoogleDrive();
-      replaceConnector(updated);
-      setNotice(updated.message || "Đã sync Google Drive.");
-    } catch {
-      setError("Không sync được Google Drive. Hãy kết nối lại hoặc kiểm tra quyền Drive readonly.");
-    } finally {
-      setSyncing(false);
     }
   }
 
@@ -221,7 +200,7 @@ export default function ConnectorManager() {
                     <div className="connector-oauth-title">Kết nối trên trình duyệt</div>
                     <div className="connector-oauth-copy">
                       {selected.auth_url_available
-                        ? "OAuth đã sẵn sàng. Bấm kết nối để cấp quyền Drive readonly, sau đó sync thành index."
+                        ? "OAuth đã sẵn sàng. Bấm kết nối để cấp quyền Drive readonly. Agent sẽ search trực tiếp qua Drive API."
                         : "Cần cấu hình GOOGLE_DRIVE_CLIENT_ID và GOOGLE_DRIVE_CLIENT_SECRET ở Rails env trước."}
                     </div>
                   </div>
@@ -236,12 +215,12 @@ export default function ConnectorManager() {
                       Kết nối Google Drive
                     </Button>
                     <Button
-                      icon={<SyncOutlined />}
-                      loading={syncing}
+                      icon={<ReloadOutlined />}
+                      loading={testing}
                       disabled={!selected.browser_connected}
-                      onClick={syncDrive}
+                      onClick={test}
                     >
-                      Sync Drive
+                      Test search
                     </Button>
                     <Button
                       icon={<DisconnectOutlined />}
@@ -261,23 +240,11 @@ export default function ConnectorManager() {
                     onChange={(checked) => setDraft((value) => ({ ...value, enabled: checked }))}
                   />
                 </label>
-
-                <label className="connector-field">
-                  <span>Drive index path</span>
-                  <Input
-                    value={draft.index_path}
-                    placeholder="backend/storage/google_drive_documents.json"
-                    onChange={(event) => setDraft((value) => ({ ...value, index_path: event.target.value }))}
-                  />
-                </label>
               </div>
 
               <div className="connector-actions">
                 <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={save}>
                   Lưu cấu hình
-                </Button>
-                <Button icon={<DatabaseOutlined />} loading={testing} onClick={test}>
-                  Test index
                 </Button>
               </div>
 
@@ -298,8 +265,8 @@ export default function ConnectorManager() {
               </div>
 
               <div className="connector-note">
-                <strong>Cách dùng:</strong> bấm kết nối Google Drive trên trình duyệt, cấp quyền readonly, rồi bấm Sync Drive.
-                Agent sẽ tìm song song tài liệu upload, project documents và Drive index khi chat.
+                <strong>Cách dùng:</strong> bấm kết nối Google Drive trên trình duyệt và cấp quyền readonly.
+                Khi chat, agent sẽ tìm song song tài liệu upload, project documents và Google Drive API live search.
               </div>
             </section>
           </div>
@@ -324,8 +291,8 @@ function StatusPill({ connector }: { connector: AgentConnector }) {
 function statusLabel(connector: AgentConnector) {
   if (!connector.enabled || connector.status === "disabled") return "Đang tắt";
   if (connector.status === "connected") return "Đã kết nối";
-  if (connector.status === "missing_index") return "Thiếu index";
-  if (connector.status === "invalid_index") return "Index lỗi";
+  if (connector.status === "missing_auth") return "Chưa cấp quyền";
+  if (connector.status === "connection_error") return "Lỗi kết nối";
   return "Chưa cấu hình";
 }
 

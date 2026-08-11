@@ -50,7 +50,7 @@ module AgentLoop
           output: fallback_output(fallback, e)
         ),
         metrics: {
-          provider: "ollama",
+          provider: @client.provider,
           model: @client.model,
           status: "failed"
         },
