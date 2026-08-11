@@ -57,6 +57,7 @@ module AgentLoop
         title: table_title,
         bullets: table_rows.map { |row| row[0] },
         content: table_content,
+        sections: table_sections,
         sources: source_titles
       }
     end
@@ -65,12 +66,23 @@ module AgentLoop
       lines = [ "# #{table_title}", "" ]
       lines << "| Item | Feature | Effort (Man-day) | Remarks |"
       lines << "|---|---|---:|---|"
-      table_rows.each { |row| lines << "| #{row.join(' | ')} |" }
+      table_sections.each { |section| lines << "| #{section[:item]} | #{section[:feature]} | #{section[:effort]} | #{section[:remarks]} |" }
       lines << ""
       lines << "**Total estimate:** khoảng **2.5-4 man-days** cho bản login Google cơ bản, tuỳ app đã có user/session hay chưa."
       lines << ""
       lines << "> Giả định: Rails app đã có database và môi trường dev/prod cơ bản; estimate chưa bao gồm phân quyền phức tạp hoặc SSO enterprise."
       lines.join("\n")
+    end
+
+    def table_sections
+      @table_sections ||= table_rows.map do |item, feature, effort, remarks|
+        {
+          item: item,
+          feature: feature,
+          effort: effort,
+          remarks: remarks
+        }
+      end
     end
 
     def table_title

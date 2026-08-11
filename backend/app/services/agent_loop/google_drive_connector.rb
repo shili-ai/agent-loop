@@ -1,6 +1,7 @@
 require "json"
 require "fileutils"
 require "net/http"
+require "tempfile"
 require "securerandom"
 require "uri"
 
@@ -80,11 +81,16 @@ module AgentLoop
       access_token = valid_access_token
       files = list_files(access_token, limit: limit)
       documents = files.filter_map { |file| document_from_file(file, access_token) }
+      skipped_count = files.count - documents.count
       index_path = AgentConnectorRegistry.google_drive_index_path
       FileUtils.mkdir_p(File.dirname(index_path))
       File.write(index_path, JSON.pretty_generate(documents))
       AgentConnectorRegistry.update(AgentConnectorRegistry::GOOGLE_DRIVE_KEY, enabled: true)
-      AgentConnectorRegistry.test(AgentConnectorRegistry::GOOGLE_DRIVE_KEY)
+      AgentConnectorRegistry.test(AgentConnectorRegistry::GOOGLE_DRIVE_KEY).merge(
+        listed_count: files.count,
+        indexed_count: documents.count,
+        skipped_count: skipped_count
+      )
     end
 
     def self.token
@@ -119,18 +125,30 @@ module AgentLoop
     end
 
     def self.list_files(access_token, limit:)
-      uri = URI(FILES_URL)
-      uri.query = URI.encode_www_form(
-        pageSize: limit,
-        fields: "files(id,name,mimeType,modifiedTime,webViewLink)",
-        q: "trashed = false"
-      )
-      response = get_json(uri, access_token)
-      Array(response[:files])
+      files = []
+      page_token = nil
+
+      loop do
+        page_size = [ [ limit - files.count, 100 ].min, 1 ].max
+        uri = URI(FILES_URL)
+        params = {
+          pageSize: page_size,
+          fields: "nextPageToken,files(id,name,mimeType,modifiedTime,webViewLink)",
+          q: "trashed = false"
+        }
+        params[:pageToken] = page_token if page_token.present?
+        uri.query = URI.encode_www_form(params)
+        response = get_json(uri, access_token)
+        files.concat(Array(response[:files]))
+        page_token = response[:nextPageToken]
+        break if page_token.blank? || files.count >= limit
+      end
+
+      files.first(limit)
     end
 
     def self.document_from_file(file, access_token)
-      content = file_content(file, access_token)
+      content = utf8_text(file_content(file, access_token))
       return nil if content.blank?
 
       {
@@ -151,6 +169,8 @@ module AgentLoop
       mime_type = file[:mimeType].to_s
       if google_workspace_file?(mime_type)
         export_file(file[:id], export_mime_type(mime_type), access_token)
+      elsif xlsx_file?(mime_type)
+        xlsx_text(download_binary_file(file[:id], access_token))
       elsif text_file?(mime_type)
         download_file(file[:id], access_token)
       end
@@ -162,6 +182,10 @@ module AgentLoop
 
     def self.text_file?(mime_type)
       mime_type.start_with?("text/") || mime_type.in?(%w[application/json application/xml])
+    end
+
+    def self.xlsx_file?(mime_type)
+      mime_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     end
 
     def self.export_mime_type(mime_type)
@@ -182,6 +206,33 @@ module AgentLoop
       get_text(uri, access_token)
     end
 
+    def self.download_binary_file(file_id, access_token)
+      uri = URI("#{FILES_URL}/#{file_id}")
+      uri.query = URI.encode_www_form(alt: "media")
+      get_binary(uri, access_token)
+    end
+
+    def self.xlsx_text(binary)
+      require "roo"
+
+      Tempfile.create([ "google-drive", ".xlsx" ], binmode: true) do |file|
+        file.write(binary)
+        file.flush
+        workbook = Roo::Spreadsheet.open(file.path, extension: :xlsx)
+        workbook.sheets.flat_map do |sheet_name|
+          sheet = workbook.sheet(sheet_name)
+          rows = [ "## #{sheet_name}" ]
+          sheet.each_row_streaming(pad_cells: true).first(200).each do |row|
+            values = row.map { |cell| cell&.value.to_s.strip }.reject(&:blank?)
+            rows << values.join(" | ") if values.any?
+          end
+          rows
+        end.join("\n")
+      end
+    rescue LoadError
+      ""
+    end
+
     def self.post_form(url, params)
       uri = URI(url)
       response = Net::HTTP.post_form(uri, params)
@@ -196,12 +247,33 @@ module AgentLoop
     end
 
     def self.get_text(uri, access_token)
-      request = Net::HTTP::Get.new(uri)
-      request["Authorization"] = "Bearer #{access_token}"
-      response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https") { |http| http.request(request) }
+      response = get_response(uri, access_token)
       raise "Google API lỗi #{response.code}: #{response.body.first(160)}" unless response.is_a?(Net::HTTPSuccess)
 
       response.body
+    end
+
+    def self.get_binary(uri, access_token)
+      response = get_response(uri, access_token)
+      raise "Google API lỗi #{response.code}: #{response.body.first(160)}" unless response.is_a?(Net::HTTPSuccess)
+
+      response.body.b
+    end
+
+    def self.get_response(uri, access_token)
+      request = Net::HTTP::Get.new(uri)
+      request["Authorization"] = "Bearer #{access_token}"
+      Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https") { |http| http.request(request) }
+    end
+
+    def self.utf8_text(value)
+      text = value.to_s
+      text = text.dup.force_encoding(Encoding::UTF_8)
+      return text if text.valid_encoding?
+
+      value.to_s.encode(Encoding::UTF_8, invalid: :replace, undef: :replace, replace: "")
+    rescue Encoding::UndefinedConversionError, Encoding::InvalidByteSequenceError
+      value.to_s.scrub("")
     end
 
     def self.save_token!(payload)

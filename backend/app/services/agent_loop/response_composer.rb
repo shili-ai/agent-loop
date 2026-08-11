@@ -10,10 +10,11 @@ module AgentLoop
 
     def call
       return no_reliable_web_answer if no_reliable_web_evidence?
+      artifact = @tool_result[:artifact]
+      return structured_artifact_answer(artifact) if structured_artifact?(artifact)
       return model_answer_with_web_sources if @model_answer.present?
       return clarification_answer if @clarification.present?
 
-      artifact = @tool_result[:artifact]
       return web_search_answer if web_results.present? && !artifact
       return document_search_answer unless artifact
 
@@ -41,6 +42,41 @@ module AgentLoop
 
     def no_reliable_web_evidence?
       @intent == "web_search" && web_results.blank? && web_search_attempted?
+    end
+
+    def structured_artifact?(artifact)
+      content = artifact&.dig(:content).to_s
+      return false if content.blank?
+
+      table_requested? || markdown_table?(content)
+    end
+
+    def table_requested?
+      normalized = @user_message.to_s.downcase
+        .unicode_normalize(:nfkd)
+        .gsub(/\p{Mn}/, "")
+        .gsub("đ", "d")
+      normalized.match?(/\b(table|bang)\b/) || normalized.include?("lap bang")
+    end
+
+    def markdown_table?(content)
+      lines = content.lines.map(&:strip)
+      lines.any? { |line| line.start_with?("|") } &&
+        lines.any? { |line| line.match?(/\A\|?\s*:?-{3,}:?\s*\|/) || line.include?("|---") }
+    end
+
+    def structured_artifact_answer(artifact)
+      lines = []
+      lines << "Mình đã tạo output theo đúng định dạng yêu cầu:"
+      lines << ""
+      lines << artifact[:content].to_s.strip
+      evidence_lines = evidence_section_lines
+      if evidence_lines.any?
+        lines << ""
+        lines << "**Nguồn đã dùng:**"
+        lines.concat(evidence_lines)
+      end
+      lines.join("\n")
     end
 
     def web_search_attempted?
@@ -134,6 +170,15 @@ module AgentLoop
 
     def web_sources_section
       [ "**Nguồn web đã dùng:**", *web_source_lines ].join("\n")
+    end
+
+    def evidence_section_lines
+      lines = []
+      @tool_result[:documents].to_a.each do |document|
+        lines << "- **#{document[:title]}**#{document[:source].present? ? " (#{document[:source]})" : ""}"
+      end
+      lines.concat(web_source_lines) if web_results.present?
+      lines
     end
 
     def web_source_lines

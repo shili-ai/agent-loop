@@ -311,21 +311,23 @@ module AgentLoop
         state[:artifact_tool] = artifact_result[:tool]
         artifact_entry = add_artifact_entry(state, artifact: artifact, output: artifact_result[:output], tool: artifact_result[:tool], status: "drafted")
         bullets = Array(artifact[:bullets])
+        sections = Array(artifact[:sections])
         evidence = state[:documents].to_a.count
         append_working_note(
           state,
           action: "draft_artifact",
-          summary: "Đã tạo bản nháp #{artifact[:title]} với #{bullets.count} ý chính, dựa trên #{evidence} tài liệu.",
+          summary: "Đã tạo bản nháp #{artifact[:title]} với #{sections.any? ? "#{sections.count} phần nhỏ" : "#{bullets.count} ý chính"}, dựa trên #{evidence} tài liệu.",
           artifact_id: artifact_entry[:id],
           artifact_title: artifact[:title],
           bullet_count: bullets.count,
+          section_count: sections.count,
           evidence_count: evidence
         )
         create_step(
           run,
           "artifact",
           "Soạn bản nháp",
-          "Dựa trên #{evidence} tài liệu tìm được, mình phác thảo bản nháp “#{artifact[:title]}”#{bullets.any? ? " gồm #{bullets.count} ý chính" : ""}.",
+          "Dựa trên #{evidence} tài liệu tìm được, mình phác thảo bản nháp “#{artifact[:title]}”#{sections.any? ? " bằng #{sections.count} phần nhỏ rồi ghép thành file cuối" : (bullets.any? ? " gồm #{bullets.count} ý chính" : "")}.",
           {
             tools: [ artifact_result[:tool] ],
             artifact: artifact,

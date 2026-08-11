@@ -20,6 +20,7 @@ module AgentLoop
         web_pages: web_pages,
         draft: draft,
         artifacts: artifacts,
+        output_contract: output_contract,
         missing_context: missing_context
       }
     end
@@ -91,6 +92,7 @@ module AgentLoop
         title: artifact[:title],
         bullets: artifact[:bullets],
         content: artifact[:content],
+        sections: artifact[:sections],
         sources: artifact[:sources]
       }.compact
     end
@@ -104,6 +106,24 @@ module AgentLoop
           checks: entry[:checks] || entry["checks"]
         }.compact
       end
+    end
+
+    def output_contract
+      artifact = @tool_result[:artifact]
+      content = artifact&.dig(:content).to_s
+      {
+        preserve_draft_content: content.present?,
+        markdown_table_required: table_request? || content.include?("| Item | Feature | Effort (Man-day) | Remarks |"),
+        required_columns: table_request? ? [ "Item", "Feature", "Effort (Man-day)", "Remarks" ] : nil
+      }.compact
+    end
+
+    def table_request?
+      normalized = @user_message.to_s.downcase
+        .unicode_normalize(:nfkd)
+        .gsub(/\p{Mn}/, "")
+        .gsub("đ", "d")
+      normalized.match?(/\b(table|bang)\b/) || normalized.include?("lap bang")
     end
 
     def missing_context

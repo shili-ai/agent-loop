@@ -8,6 +8,7 @@ Hãy tạo câu trả lời cuối theo cấu trúc:
    - Nếu là khuyến nghị: tách "Dữ kiện", "Nhận định", "Đề xuất".
    - Nếu là nội dung presales/tài liệu: đưa bản nháp có thể dùng ngay.
    - Dùng bullet hoặc bảng ngắn khi giúp đọc nhanh hơn.
+   - Nếu final brief có `draft.content`, đặc biệt là Markdown table, hãy đưa nguyên nội dung đó vào câu trả lời chính. Không chuyển bảng thành đoạn văn.
 3. Bằng chứng đã dùng:
    - Dùng working_notes để hiểu bước trước đã tìm/không tìm thấy gì, nhưng không in raw `working_notes` và không viết chữ "working_notes".
    - Nếu có web_pages, ưu tiên nội dung trong web_pages; web_evidence chỉ là nguồn/tóm tắt tìm kiếm.

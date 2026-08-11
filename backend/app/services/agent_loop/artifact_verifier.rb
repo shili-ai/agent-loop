@@ -31,7 +31,8 @@ module AgentLoop
 
       [
         check("Đúng header bảng estimate", content.include?(ESTIMATE_HEADER), "Bảng estimate phải có 4 cột: Item, Feature, Effort (Man-day), Remarks."),
-        check("Có ít nhất một dòng dữ liệu", table_data_rows.positive?, "Bảng cần có ít nhất một item estimate.")
+        check("Có ít nhất một dòng dữ liệu", table_data_rows.positive?, "Bảng cần có ít nhất một item estimate."),
+        check("Mỗi dòng đúng 4 cột", table_rows_have_four_columns?, "Mỗi dòng estimate phải có đúng 4 cột để render thành bảng.")
       ]
     end
 
@@ -56,7 +57,17 @@ module AgentLoop
     end
 
     def table_data_rows
-      content.lines.count { |line| line.start_with?("|") && !line.include?("---") && !line.include?(ESTIMATE_HEADER) }
+      table_body_rows.count
+    end
+
+    def table_rows_have_four_columns?
+      table_body_rows.all? { |line| line.split("|").map(&:strip).reject(&:blank?).count == 4 }
+    end
+
+    def table_body_rows
+      content.lines.map(&:strip).select do |line|
+        line.start_with?("|") && !line.include?("---") && !line.include?(ESTIMATE_HEADER)
+      end
     end
 
     def table_request?
