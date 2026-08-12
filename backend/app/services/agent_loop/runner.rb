@@ -58,6 +58,7 @@ module AgentLoop
         goal: analysis[:goal],
         actions: analysis[:actions],
         steps: analysis[:steps],
+        keywords: analysis[:keywords],
         output: analysis[:output]
       }
       plan_actions = Array(plan[:actions]).map { |action| humanize_action(action) }.join(" → ")
@@ -80,7 +81,8 @@ module AgentLoop
         clarification: nil,
         working_notes: [],
         search_attempts: 0,
-        web_attempts: 0
+        web_attempts: 0,
+        keywords: Array(analysis[:keywords])
       }
       append_working_note(
         state,
@@ -229,7 +231,7 @@ module AgentLoop
     def execute_action(run, intent, state, action, message, context)
       case action
       when "search_documents"
-        keywords = search_keywords(message)
+        keywords = retrieval_keywords(state, message)
         documents = DocumentSearch.new(query: message, conversation: @conversation).call
         state[:documents] = documents
         state[:search_attempts] = state[:search_attempts].to_i + 1
@@ -256,7 +258,7 @@ module AgentLoop
         )
         evaluate_search_results(run, state, message)
       when "web_search"
-        keywords = search_keywords(message)
+        keywords = retrieval_keywords(state, message)
         searcher = WebSearch.new(query: message)
         results = searcher.call
         candidates = searcher.candidates
@@ -432,7 +434,7 @@ module AgentLoop
       do_web = planned_actions.include?("web_search")
       return unless do_documents || do_web
 
-      keywords = search_keywords(message)
+      keywords = retrieval_keywords(state, message)
 
       # Chỉ chạy đúng nhánh mà plan yêu cầu; nếu cả hai thì chạy song song.
       document_thread = do_documents ? Thread.new { retrieve_documents(message, keywords) } : nil
@@ -820,6 +822,12 @@ module AgentLoop
         action = step[:action] || step["action"]
         title.presence || humanize_action(action)
       end.join(" → ")
+    end
+
+    # Ưu tiên từ khoá do model đề xuất (cô đọng, đã bỏ từ dừng); chỉ rơi về tách
+    # thô khi model không cho keyword nào.
+    def retrieval_keywords(state, message)
+      Array(state[:keywords]).map(&:to_s).reject(&:blank?).presence || search_keywords(message)
     end
 
     def search_keywords(message)

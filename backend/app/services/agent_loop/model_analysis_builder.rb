@@ -67,10 +67,27 @@ module AgentLoop
         understanding: "Mình đọc yêu cầu và dùng luật dự phòng để phân loại vì model phân tích chưa sẵn sàng.",
         intent: intent,
         goal: plan[:goal],
+        keywords: fallback_keywords,
         steps: Array(plan[:steps]),
         actions: Array(plan[:actions]),
         output: plan[:output]
       }
+    end
+
+    # Fallback khi model không trả keyword: tách từ nhưng LOẠI từ dừng tiếng Việt
+    # để không ra token rác như "trên/mình/liệu".
+    STOP_WORDS = %w[
+      trên dưới trong ngoài mình tôi bạn liệu giúp cho các những một này nọ kia
+      và hoặc của với về theo là như thì mà nên cần muốn được rồi đang sẽ đã
+      gì sao nào đâu nhỉ nhé ạ ơi cái việc thông tin hãy vui lòng cùng khi vì
+    ].freeze
+
+    def fallback_keywords
+      @message.to_s.downcase
+        .scan(/[\p{L}\p{N}]+/)
+        .select { |word| word.length >= 3 && !STOP_WORDS.include?(word) }
+        .uniq
+        .first(8)
     end
 
     def normalize(parsed, fallback)
@@ -82,15 +99,26 @@ module AgentLoop
       steps = normalize_steps(fallback[:steps]) if steps.empty?
       steps = ensure_final_step(steps)
       actions = steps.map { |step| step[:action] }.uniq
+      keywords = normalize_keywords(parsed[:keywords]).presence || fallback[:keywords]
 
       {
         understanding: understanding,
         intent: intent,
         goal: goal,
+        keywords: keywords,
         steps: steps,
         actions: actions,
-        output: markdown_output(understanding, intent, goal, steps)
+        output: markdown_output(understanding, intent, goal, steps, keywords)
       }
+    end
+
+    def normalize_keywords(raw)
+      Array(raw)
+        .flat_map { |value| value.is_a?(Array) ? value : [ value ] }
+        .map { |value| value.to_s.strip.gsub(/\s+/, " ") }
+        .reject { |value| value.blank? || value.length < 2 }
+        .uniq
+        .first(8)
     end
 
     # Chấp nhận cả format mới (steps có detail) lẫn format cũ (mảng action string).
@@ -149,6 +177,7 @@ module AgentLoop
         understanding: data["understanding"],
         intent: data["intent"].to_s.strip,
         goal: data["goal"],
+        keywords: data["keywords"],
         steps: data["steps"] || data["actions"]
       }
     end
@@ -212,14 +241,15 @@ module AgentLoop
       lines.presence&.join("\n") || "Không có."
     end
 
-    def markdown_output(understanding, intent, goal, steps)
+    def markdown_output(understanding, intent, goal, steps, keywords = [])
       lines = [
         "### Phân tích bằng model",
         "- Mình hiểu: #{understanding}",
         "- Intent: `#{intent}`",
-        "- Mục tiêu: #{goal}",
-        "- Kế hoạch chi tiết:"
+        "- Mục tiêu: #{goal}"
       ]
+      lines << "- Từ khoá tìm kiếm: #{Array(keywords).join(', ')}" if Array(keywords).any?
+      lines << "- Kế hoạch chi tiết:"
       lines.concat(steps_markdown(steps))
       lines.join("\n")
     end

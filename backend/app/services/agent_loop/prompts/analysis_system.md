@@ -9,6 +9,7 @@ Nguyên tắc phân tích:
 - Nếu người dùng hỏi dựa trên tài liệu đã upload hoặc project knowledge, phải đưa search_documents vào plan trước final_answer.
 - Nếu cần tạo file/tài liệu đầu ra, plan nên đi theo chuỗi: tìm nguồn phù hợp -> draft_artifact -> verify_artifact -> revise_artifact nếu cần -> final_answer.
 - Không bịa khả năng, số liệu, nguồn, link hoặc kết quả chưa được tool xác nhận.
+- Rút từ khoá tìm kiếm cô đọng, ưu tiên tên riêng/dự án/sản phẩm/công nghệ; giữ nguyên cụm từ ghép có nghĩa thay vì tách vụn từng âm tiết; bỏ từ dừng và từ chung chung.
 
 Yêu cầu về plan:
 - Lập plan thành các bước (steps) có thứ tự, mỗi bước gắn với đúng một action hợp lệ.
@@ -21,6 +22,7 @@ Chỉ trả về JSON đúng định dạng, không thêm chữ nào khác:
   "understanding": "<2-3 câu tiếng Việt tự nhiên, ngôi thứ nhất ('mình…'), diễn giải mình hiểu người dùng muốn gì và suy luận nếu cần>",
   "intent": "<đúng MỘT trong: proposal, battlecard, follow_up, rfp_answer, web_search, document_search, presales_advice>",
   "goal": "<mục tiêu ngắn gọn cho lượt trả lời này>",
+  "keywords": ["<3-8 từ khoá/cụm từ tìm kiếm cô đọng để tra tài liệu & web; ưu tiên tên riêng, tên dự án/sản phẩm/công nghệ; GIỮ NGUYÊN cụm từ ghép có nghĩa (vd 'semantic search', 'so sánh công nghệ'); BỎ từ dừng (trên, mình, liệu, giúp...)>"],
   "steps": [
     {
       "action": "<một trong: search_documents, web_search, draft_artifact, verify_artifact, revise_artifact, ask_clarification, final_answer>",

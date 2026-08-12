@@ -143,6 +143,43 @@ function StepResultPreview({ step }: { step: AgentStep }) {
     );
   }
 
+  if (step.kind === "plan") {
+    const planSteps = asRecords(step.data.steps);
+    if (!planSteps.length) return null;
+
+    return (
+      <div className="step-result-preview">
+        <PlanStepsGroup steps={planSteps} />
+      </div>
+    );
+  }
+
+  if (step.kind === "retrieval") {
+    const documents = asRecords(step.data.documents);
+    const internal = documents.filter((doc) => !isDriveDoc(doc));
+    const drive = documents.filter(isDriveDoc);
+    const webResults = asRecords(step.data.web_results);
+    const pages = asRecords(step.data.pages).filter((page) => asText(page.status) === "read");
+
+    return (
+      <div className="step-result-preview">
+        {internal.length ? <StepResultGroup items={internal} title="Tài liệu nội bộ" /> : null}
+        {drive.length ? <StepResultGroup items={drive} title="Google Drive" /> : null}
+        {webResults.length ? (
+          <StepResultGroup items={webResults} title="Kết quả web đạt chuẩn" />
+        ) : (
+          <WebEmptyGroup raw={asRecords(step.data.web_raw_results)} candidates={asRecords(step.data.web_candidates)} />
+        )}
+        {pages.length ? (
+          <div className="step-result-group">
+            <div className="step-result-title">Trang web đã đọc</div>
+            <div className="step-result-empty">Đọc được {pages.length} trang.</div>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   if (step.kind === "verification") {
     const checks = asRecords(step.data.checks);
     if (!checks.length) return null;
@@ -185,6 +222,54 @@ function WebPageReadGroup({ pages }: { pages: Record<string, unknown>[] }) {
       </div>
     </div>
   );
+}
+
+function PlanStepsGroup({ steps }: { steps: Record<string, unknown>[] }) {
+  return (
+    <div className="step-result-group">
+      <div className="step-result-title">Các bước dự kiến</div>
+      <ol className="step-result-list">
+        {steps.map((planStep, index) => (
+          <li key={`${asText(planStep.title) || asText(planStep.action) || index}-${index}`}>
+            <span className="step-result-name">{asText(planStep.title) || asText(planStep.action) || `Bước ${index + 1}`}</span>
+            {asText(planStep.detail) ? <span className="step-result-reason"> · {asText(planStep.detail)}</span> : null}
+            {asText(planStep.expected) ? <span className="step-result-url"> · Mong đợi: {asText(planStep.expected)}</span> : null}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function WebEmptyGroup({ candidates, raw }: { candidates: Record<string, unknown>[]; raw: Record<string, unknown>[] }) {
+  const reasons = Array.from(new Set(candidates.map((candidate) => asText(candidate.reason)).filter(Boolean))).slice(0, 3);
+
+  return (
+    <div className="step-result-group">
+      <div className="step-result-title">Kết quả web</div>
+      {raw.length ? (
+        <>
+          <div className="step-result-empty">0/{raw.length} kết quả đạt chuẩn.</div>
+          {reasons.length ? (
+            <ul className="step-result-list">
+              {reasons.map((reason, index) => (
+                <li key={`${reason}-${index}`}>
+                  <span className="step-result-reason">Loại: {reason}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </>
+      ) : (
+        <div className="step-result-empty">Search provider không trả về kết quả thô nào.</div>
+      )}
+    </div>
+  );
+}
+
+function isDriveDoc(doc: Record<string, unknown>): boolean {
+  const source = asText(doc.source);
+  return source.startsWith("drive://") || asText(doc.type) === "google_drive" || asText(doc.search_provider) === "drive";
 }
 
 function StepResultGroup({ items, title }: { items: Record<string, unknown>[]; title: string }) {
@@ -351,6 +436,18 @@ function stepMetadata(step: AgentStep) {
   if (step.kind === "document_search" || step.kind === "web_search" || step.kind === "web_read") {
     addItem("Công cụ", Array.isArray(data.tools) ? data.tools.join(", ") : data.tools);
     addItem("Từ khoá", Array.isArray(data.keywords) ? data.keywords.join(", ") : data.query);
+  }
+
+  if (step.kind === "retrieval") {
+    addItem("Công cụ", Array.isArray(data.tools) ? data.tools.join(", ") : data.tools, true);
+    addItem("Từ khoá", Array.isArray(data.keywords) ? data.keywords.join(", ") : data.query, true);
+    addItem("Thử lại từ khoá", data.reformulated_query, true);
+  }
+
+  if (step.kind === "plan") {
+    addItem("Mục tiêu", data.goal, true);
+    addItem("Từ khoá", Array.isArray(data.keywords) ? data.keywords.join(", ") : undefined, true);
+    addItem("Số bước", Array.isArray(data.steps) ? data.steps.length : undefined);
   }
 
   if (step.kind === "artifact") {
@@ -524,6 +621,7 @@ function stepIcon(step: AgentStep) {
   if (step.kind === "reasoning") return <BulbOutlined />;
   if (step.kind === "decision") return <BulbOutlined />;
   if (step.kind === "evaluation") return <CheckCircleOutlined />;
+  if (step.kind === "retrieval") return <FileSearchOutlined />;
   if (step.kind === "document_search") return <FileSearchOutlined />;
   if (step.kind === "web_search") return <FileSearchOutlined />;
   if (step.kind === "web_read") return <FileTextOutlined />;
