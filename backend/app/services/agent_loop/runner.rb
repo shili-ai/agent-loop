@@ -126,7 +126,7 @@ module AgentLoop
         run,
         "flow",
         "Vẽ sơ đồ luồng",
-        "Đã tạo Mermaid flow từ các bước agent vừa chạy.",
+        "Đã dựng sơ đồ luồng (nodes/edges) từ các bước agent vừa chạy.",
         RunFlowBuilder.new(run: run).call
       )
 

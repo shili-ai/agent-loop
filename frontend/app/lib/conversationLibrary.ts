@@ -40,7 +40,6 @@ function collectLibraryFromRuns(runs: AgentRun[]): ConversationLibrary {
   const outputs: LibraryItem[] = [];
   const sources: LibraryItem[] = [];
   const seen = new Set<string>();
-  let flowIndex = 0;
 
   const push = (bucket: LibraryItem[], item: Omit<LibraryItem, "key">) => {
     const cleanTitle = item.title.trim();
@@ -98,21 +97,7 @@ function collectLibraryFromRuns(runs: AgentRun[]): ConversationLibrary {
         }
       }
 
-      if (step.kind === "flow") {
-        const diagram = asString(data.diagram);
-        if (diagram) {
-          flowIndex += 1;
-          const suffix = flowIndex > 1 ? `-${flowIndex}` : "";
-          push(outputs, {
-            kind: "flow",
-            title: `so-do-luong${suffix}.md`,
-            detail: "Tài liệu",
-            name: `so-do-luong${suffix}.md`,
-            content: `\`\`\`mermaid\n${diagram.trim()}\n\`\`\`\n`,
-            mime: "text/markdown;charset=utf-8",
-          });
-        }
-      }
+      // Sơ đồ luồng giờ render trực tiếp bằng React Flow, không xuất file md nữa.
     });
   });
 

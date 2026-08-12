@@ -7,17 +7,22 @@ import {
   DownloadOutlined,
   FileTextOutlined,
   FileSearchOutlined,
+  FullscreenExitOutlined,
+  FullscreenOutlined,
   LoadingOutlined,
   RightOutlined,
   RobotOutlined,
   ToolOutlined,
 } from "@ant-design/icons";
-import { Space } from "antd";
-import { useState } from "react";
+import { Segmented, Space } from "antd";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { collectRunOutputs, triggerLibraryDownload, type LibraryItem } from "../../lib/conversationLibrary";
+import { buildRunFlowGraph } from "../../lib/runFlowGraph";
 import type { AgentMessage, AgentRun, AgentStep } from "../../types/agent";
 import MarkdownContent from "../atoms/MarkdownContent";
 import MessageActions from "../atoms/MessageActions";
+import RunFlowGraph from "./RunFlowGraph";
 
 type InlineAgentRunProps = {
   finalAnswer?: AgentMessage;
@@ -30,8 +35,39 @@ export default function InlineAgentRun({ finalAnswer, onOpenLibraryItem, pending
   const steps = run?.steps ?? [];
   const visibleSteps = steps.filter((step) => step.kind !== "flow");
   const running = pending || run?.status === "running";
+  // Dựng sơ đồ LIVE từ các bước đã stream về (không chờ step "flow" ở cuối run).
+  const flowGraph = visibleSteps.length ? buildRunFlowGraph(visibleSteps, { running }) : null;
   const [expanded, setExpanded] = useState(false);
+  const [viewMode, setViewMode] = useState<"trace" | "flow">("flow");
+  const [selectedStepIndex, setSelectedStepIndex] = useState<number | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [insets, setInsets] = useState<{ top: number; bottom: number }>({ top: 0, bottom: 0 });
   const showSteps = running || expanded;
+
+  useEffect(() => {
+    if (!fullscreen) return;
+    // Chặn overlay đúng khoảng giữa: dưới header, trên ô nhập chat.
+    const column = document.querySelector(".chat-column");
+    const header = column?.querySelector(".chat-header");
+    const composer = column?.querySelector(".composer-dock");
+    const measure = () =>
+      setInsets({
+        top: header ? header.getBoundingClientRect().height : 0,
+        bottom: composer ? composer.getBoundingClientRect().height : 0,
+      });
+    measure();
+    const observer = new ResizeObserver(measure);
+    if (header) observer.observe(header);
+    if (composer) observer.observe(composer);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFullscreen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [fullscreen]);
 
   return (
     <div className="codex-run">
@@ -50,14 +86,70 @@ export default function InlineAgentRun({ finalAnswer, onOpenLibraryItem, pending
         </button>
 
         {showSteps ? (
-          <div className="run-steps">
-            {visibleSteps.map((step) => <StepActivity key={step.id} step={step} />)}
-            {running ? <PendingActivity /> : null}
+          <div className="run-trace-container">
+            {flowGraph ? (
+              <div className="run-view-bar">
+                <Segmented
+                  size="small"
+                  value={viewMode}
+                  onChange={(value) => setViewMode(value as "trace" | "flow")}
+                  options={[
+                    { label: "Truyền thống", value: "trace" },
+                    { label: "Sơ đồ", value: "flow" },
+                  ]}
+                />
+                {viewMode === "flow" ? (
+                  <button type="button" className="run-flow-fs-btn" onClick={() => setFullscreen(true)}>
+                    <FullscreenOutlined /> Phóng to
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            {viewMode === "flow" && flowGraph ? (
+              <div className="run-flow-pane">
+                <RunFlowGraph
+                  edges={flowGraph.edges}
+                  nodes={flowGraph.nodes}
+                  onSelectStep={(index) => setSelectedStepIndex((current) => (current === index ? null : index))}
+                  selectedStepIndex={selectedStepIndex}
+                />
+              </div>
+            ) : (
+              <div className="run-steps">
+                {visibleSteps.map((step) => <StepActivity key={step.id} step={step} />)}
+                {running ? <PendingActivity /> : null}
+              </div>
+            )}
           </div>
         ) : null}
 
         {!running ? <FinalAnswer message={finalAnswer} onOpenLibraryItem={onOpenLibraryItem} run={run} /> : null}
       </Space>
+
+      {fullscreen && flowGraph && typeof document !== "undefined" && document.querySelector(".chat-column")
+        ? createPortal(
+            <div
+              className="run-flow-overlay"
+              role="dialog"
+              aria-modal="true"
+              style={{ top: insets.top, bottom: insets.bottom }}
+            >
+              <RunFlowGraph
+                edges={flowGraph.edges}
+                nodes={flowGraph.nodes}
+                onSelectStep={(index) => setSelectedStepIndex((current) => (current === index ? null : index))}
+                selectedStepIndex={selectedStepIndex}
+              />
+              <div className="run-flow-overlay-bar bottom">
+                <span className="run-flow-overlay-title">Sơ đồ luồng</span>
+                <button type="button" className="run-flow-fs-btn" onClick={() => setFullscreen(false)}>
+                  <FullscreenExitOutlined /> Thu nhỏ (Esc)
+                </button>
+              </div>
+            </div>,
+            document.querySelector(".chat-column") as Element
+          )
+        : null}
     </div>
   );
 }
@@ -641,6 +733,7 @@ function stepLabel(step: AgentStep) {
   if (step.kind === "reasoning") return "Phân tích yêu cầu";
   if (step.kind === "decision") return "Cân nhắc bước tiếp theo";
   if (step.kind === "evaluation") return "Tự đánh giá tiến độ";
+  if (step.kind === "retrieval") return "Tìm nguồn song song";
   if (step.kind === "document_search") return "Tìm tài liệu liên quan";
   if (step.kind === "web_search") return "Tra cứu trên web";
   if (step.kind === "web_read") return "Đọc trang web";
@@ -655,7 +748,7 @@ function stepLabel(step: AgentStep) {
 }
 
 function stepTone(step: AgentStep) {
-  if (["document_search", "web_search", "web_read", "artifact", "verification", "tool"].includes(step.kind)) return "tool";
+  if (["retrieval", "document_search", "web_search", "web_read", "artifact", "verification", "tool"].includes(step.kind)) return "tool";
   if (step.kind === "llm") return "model";
   if (["decision", "evaluation", "plan", "reasoning"].includes(step.kind)) return "thinking";
   if (step.kind === "answer") return "final";

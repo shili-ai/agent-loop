@@ -1,4 +1,7 @@
 module AgentLoop
+  # Dựng graph (nodes + edges có sẵn toạ độ) để frontend render bằng React Flow.
+  # Bước retrieval chạy nhiều tool song song thì fan-out thành nhiều lane, hợp lại
+  # ở bước kế tiếp. Mỗi node kèm chi tiết kết quả thật rút từ data của step.
   class RunFlowBuilder
     LABELS = {
       "context" => "Đọc ngữ cảnh",
@@ -28,7 +31,9 @@ module AgentLoop
       "final_answer" => "Trả lời cuối"
     }.freeze
 
-    MAX_ITEMS = 3
+    MAX_ITEMS = 4
+    COL_W = 260
+    ROW_H = 150
 
     def initialize(run:)
       @run = run
@@ -36,50 +41,77 @@ module AgentLoop
 
     def call
       steps = @run.agent_steps.order(:position).reject { |step| step.kind == "flow" }
+      graph = build_graph(steps)
       {
-        diagram: diagram(steps),
-        output: "### Sơ đồ luồng đã chạy\nAgent đã đi qua #{steps.count} bước trước khi hoàn tất câu trả lời."
+        nodes: graph[:nodes],
+        edges: graph[:edges]
       }
     end
 
     private
 
-    def diagram(steps)
-      lines = [ "flowchart TD" ]
+    def build_graph(steps)
+      nodes = []
+      edges = []
+      row = 0
       prev_exits = []
+
       steps.each_with_index do |step, index|
-        node = build_step_node(step, index)
-        lines.concat(node[:lines])
-        prev_exits.each { |from| lines << "  #{from} --> #{node[:entry]}" }
-        prev_exits = node[:exits]
-      end
-      lines.join("\n")
-    end
+        base = node_id(index)
+        lanes = step.kind == "retrieval" ? retrieval_lanes(step) : []
 
-    # Trả về {entry, exits, lines}. Bước thường: 1 node vào = ra. Bước retrieval
-    # chạy nhiều tool song song thì fan-out thành nhiều nhánh, hợp lại ở bước sau.
-    def build_step_node(step, index)
-      base = node_id(index)
-      header = "  #{base}[\"#{node_label(step, index)}\"]"
-      lanes = step.kind == "retrieval" ? retrieval_lanes(step) : []
-      return { entry: base, exits: [ base ], lines: [ header ] } if lanes.size < 2
+        nodes << graph_node(base, step.kind, node_title(step, index), detail_lines(step), col: 0, row: row)
+        header_row = row
+        row += 1
 
-      lines = [ header ]
-      exits = []
-      lanes.each_with_index do |lane, lane_index|
-        previous = base
-        lane.each_with_index do |label, node_index|
-          nid = "#{base}L#{lane_index}N#{node_index}"
-          lines << "  #{nid}[\"#{label}\"]"
-          lines << "  #{previous} --> #{nid}"
-          previous = nid
+        if lanes.size < 2
+          exits = [ base ]
+        else
+          exits = []
+          offset = (lanes.size - 1) / 2.0
+          lanes.each_with_index do |lane, lane_index|
+            col = lane_index - offset
+            previous = base
+            lane.each_with_index do |lane_node, node_index|
+              nid = "#{base}L#{lane_index}N#{node_index}"
+              nodes << graph_node(nid, "lane", lane_node[:title], lane_node[:details], col: col, row: header_row + 1 + node_index)
+              edges << edge(previous, nid)
+              previous = nid
+            end
+            exits << previous
+          end
+          row = header_row + 1 + lanes.map(&:size).max
         end
-        exits << previous
+
+        prev_exits.each { |from| edges << edge(from, base) }
+        prev_exits = exits
       end
-      { entry: base, exits: exits, lines: lines }
+
+      { nodes: nodes, edges: edges }
     end
 
-    # Mỗi lane là chuỗi tuần tự chạy song song với các lane khác, kèm kết quả thật.
+    def graph_node(id, kind, title, details, col:, row:)
+      {
+        id: id,
+        position: { x: (col * COL_W).round, y: row * ROW_H },
+        data: { kind: kind, title: title, details: Array(details).reject(&:blank?) }
+      }
+    end
+
+    def edge(source, target)
+      { id: "#{source}-#{target}", source: source, target: target }
+    end
+
+    def node_id(index)
+      "S#{index + 1}"
+    end
+
+    def node_title(step, index)
+      "#{index + 1}. #{LABELS.fetch(step.kind, step.title)}"
+    end
+
+    # ----- Lane cho bước retrieval -----
+
     def retrieval_lanes(step)
       data = step.data || {}
       tools = Array(data["tools"] || data[:tools]).map(&:to_s)
@@ -90,45 +122,39 @@ module AgentLoop
       lanes = []
       if tools.include?("document_search")
         internal = documents.reject { |document| drive_doc?(document) }
-        lanes << [ lane_label("Tìm tài liệu nội bộ", titles_of(internal)) ]
+        lanes << [ { title: "Tìm tài liệu nội bộ", details: bullet_details(titles_of(internal)) } ]
       end
       if tools.include?("drive_document_search")
         drive = documents.select { |document| drive_doc?(document) }
-        lanes << [ lane_label("Google Drive", titles_of(drive)) ]
+        lanes << [ { title: "Google Drive", details: bullet_details(titles_of(drive)) } ]
       end
       web_lane = []
-      if tools.include?("web_search")
-        web_lane <<
-          if web_results.any?
-            lane_label("Tìm trên web", titles_of(web_results))
-          else
-            web_empty_label(data)
-          end
-      end
+      web_lane << { title: "Tìm trên web", details: web_details(data, web_results) } if tools.include?("web_search")
       if tools.include?("web_page_reader")
         read = pages.select { |page| (page["status"] || page[:status]).to_s == "read" }
-        web_lane << lane_label("Đọc trang web", [ "#{read.count} trang đọc được" ])
+        web_lane << { title: "Đọc trang web", details: [ "#{read.count} trang đọc được" ] }
       end
       lanes << web_lane if web_lane.any?
       lanes
     end
 
-    # Khi web không có kết quả đạt chuẩn: nói rõ vì sao (đã có bao nhiêu kết quả
-    # thô, và lý do bị loại lấy từ danh sách ứng viên).
-    def web_empty_label(data)
+    def web_details(data, web_results)
+      return bullet_details(titles_of(web_results)) if web_results.any?
+
       raw = Array(data["web_raw_results"] || data[:web_raw_results])
       candidates = Array(data["web_candidates"] || data[:web_candidates])
+      return [ "không có kết quả thô trả về" ] if raw.empty?
 
-      lines = [ escape("Tìm trên web") ]
-      if raw.empty?
-        lines << "không có kết quả thô trả về"
-      else
-        lines << "0/#{raw.size} đạt chuẩn"
-        reasons = candidates.map { |candidate| candidate["reason"] || candidate[:reason] }.compact.uniq.first(2)
-        reasons.each { |reason| lines << "• loại: #{escape(reason)}" }
-        lines << "• #{escape(candidates.size)} ứng viên bị lọc" if reasons.empty? && candidates.any?
-      end
-      lines.join("<br/>")
+      lines = [ "0/#{raw.size} đạt chuẩn" ]
+      reasons = candidates.map { |candidate| candidate["reason"] || candidate[:reason] }.compact.uniq.first(2)
+      reasons.each { |reason| lines << "loại: #{clean(reason)}" }
+      lines
+    end
+
+    def bullet_details(titles)
+      return [ "(không có kết quả)" ] if titles.blank?
+
+      titles.map { |title| "• #{clean(title)}" }
     end
 
     def drive_doc?(document)
@@ -145,27 +171,8 @@ module AgentLoop
       names.first(MAX_ITEMS) + [ "+#{names.size - MAX_ITEMS} nữa" ]
     end
 
-    def lane_label(title, items)
-      lines = [ escape(title) ]
-      if items.blank?
-        lines << "(không có kết quả)"
-      else
-        items.each { |item| lines << "• #{escape(item)}" }
-      end
-      lines.join("<br/>")
-    end
+    # ----- Chi tiết cho từng loại bước -----
 
-    def node_id(index)
-      "S#{index + 1}"
-    end
-
-    def node_label(step, index)
-      lines = [ "#{index + 1}. #{escape(LABELS.fetch(step.kind, step.title))}" ]
-      lines.concat(detail_lines(step))
-      lines.join("<br/>")
-    end
-
-    # Mỗi bước ghi thêm kết quả thật rút từ data để nhìn sơ đồ là hiểu đã ra gì.
     def detail_lines(step)
       data = step.data || {}
       case step.kind
@@ -186,12 +193,12 @@ module AgentLoop
       project = data["project"] || data[:project]
       if project.is_a?(Hash)
         title = project["title"] || project[:title]
-        lines << "project: #{escape(title)}" if title.present?
+        lines << "project: #{clean(title)}" if title.present?
       end
       conversation = data["conversation"] || data[:conversation]
       if conversation.is_a?(Hash)
         customer = conversation["customer_name"] || conversation[:customer_name]
-        lines << "khách hàng: #{escape(customer)}" if customer.present?
+        lines << "khách hàng: #{clean(customer)}" if customer.present?
       end
       messages = data["recent_messages"] || data[:recent_messages]
       lines << "#{Array(messages).size} tin nhắn gần đây" if Array(messages).any?
@@ -201,15 +208,15 @@ module AgentLoop
     def retrieval_header_lines(data)
       keywords = Array(data["keywords"] || data[:keywords]).map(&:to_s).reject(&:blank?)
       lines = []
-      lines << "từ khoá: #{escape(keywords.first(6).join(', '))}" if keywords.any?
+      lines << "từ khoá: #{clean(keywords.first(6).join(', '))}" if keywords.any?
       reformulated = data["reformulated_query"] || data[:reformulated_query]
-      lines << "thử lại: #{escape(reformulated)}" if reformulated.present?
+      lines << "thử lại: #{clean(reformulated)}" if reformulated.present?
       lines
     end
 
     def reasoning_lines(data)
       intent = data["intent"] || data[:intent]
-      intent.present? ? [ "intent: #{escape(intent)}" ] : []
+      intent.present? ? [ "intent: #{clean(intent)}" ] : []
     end
 
     def plan_lines(data)
@@ -217,10 +224,10 @@ module AgentLoop
       if steps.any?
         steps.first(6).map do |plan_step|
           title = plan_step["title"] || plan_step[:title] || humanize_action(plan_step["action"] || plan_step[:action])
-          "• #{escape(title)}"
+          "• #{clean(title)}"
         end
       elsif (goal = data["goal"] || data[:goal]).present?
-        [ escape(truncate(goal, 80)) ]
+        [ clean(truncate(goal, 80)) ]
       else
         []
       end
@@ -236,19 +243,17 @@ module AgentLoop
 
     def decision_lines(data)
       action = data["action"] || data[:action]
-      action.present? ? [ "→ #{escape(humanize_action(action))}" ] : []
+      action.present? ? [ "→ #{clean(humanize_action(action))}" ] : []
     end
 
     def llm_lines(data)
       model = data["model"] || data[:model]
-      model.present? ? [ escape(model) ] : []
+      model.present? ? [ clean(model) ] : []
     end
 
     def answer_lines(data)
       output = data["output"] || data[:output]
-      return [] if output.blank?
-
-      [ "#{output.to_s.length} ký tự" ]
+      output.present? ? [ "#{output.to_s.length} ký tự" ] : []
     end
 
     def humanize_action(action)
@@ -260,8 +265,8 @@ module AgentLoop
       string.length > limit ? "#{string[0, limit]}…" : string
     end
 
-    def escape(text)
-      text.to_s.gsub(/[\r\n]+/, " ").gsub('"', "'").gsub(/[\[\]|]/, "").strip
+    def clean(text)
+      text.to_s.gsub(/[\r\n]+/, " ").strip
     end
   end
 end

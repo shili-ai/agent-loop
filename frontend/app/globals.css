@@ -209,12 +209,22 @@ body {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  position: relative;
 }
 
 .chat-header,
 .clarification-dock,
 .composer-dock {
   flex: 0 0 auto;
+}
+
+/* Header + ô nhập chat luôn nằm TRÊN overlay sơ đồ (overlay là nội dung chat
+   nên núp phía sau). */
+.chat-column > .chat-header,
+.chat-column .clarification-dock,
+.chat-column .composer-dock {
+  position: relative;
+  z-index: 2;
 }
 
 /* New-chat hero: composer centered vertically until the first message */
@@ -3570,3 +3580,239 @@ body {
     grid-column: auto;
   }
 }
+
+/* Sơ đồ luồng React Flow — 2 mode: trace truyền thống / sơ đồ */
+.run-trace-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.run-view-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.run-flow-fs-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.run-flow-fs-btn:hover { background: #dbeafe; }
+
+.run-flow-pane {
+  width: 100%;
+}
+
+/* Phóng to sơ đồ — phủ đúng vùng nội dung chat (toạ độ set inline theo
+   .messages-scroll), giữ header trên và ô nhập chat dưới. */
+.run-flow-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Fade mờ ở mép trên (dưới header) và mép trên thanh nút, cho cảm giác nội dung
+   trôi vào phía sau header/input. */
+.run-flow-overlay::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 26px;
+  background: linear-gradient(to bottom, #ffffff, rgba(255, 255, 255, 0));
+  pointer-events: none;
+  z-index: 2;
+}
+
+.run-flow-overlay-bar {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+}
+
+.run-flow-overlay-bar.bottom {
+  border-bottom: none;
+  border-top: 1px solid #eef2f7;
+  box-shadow: none;
+}
+
+.run-flow-overlay-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.run-flow-overlay-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.run-flow-overlay > .run-flow-graph {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  border: none;
+  border-radius: 0;
+}
+
+.run-flow-graph {
+  height: 520px;
+  width: 100%;
+  border: 1px solid #eef2f7;
+  border-radius: 10px;
+  background: #fbfdfe;
+  overflow: hidden;
+}
+
+.flow-node {
+  width: 240px;
+  border: 1px solid #d9e2ec;
+  border-left: 3px solid #94a3b8;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 8px 10px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  font-size: 12px;
+  color: #1f2937;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.flow-node:hover { box-shadow: 0 3px 10px rgba(15, 23, 42, 0.14); }
+
+/* Node bung chi tiết ngay trong flow: rộng hơn, nội dung cuộn được */
+.flow-node-expanded {
+  width: 300px;
+  border-color: #2563eb;
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.22);
+}
+
+.flow-node-body {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed #e2e8f0;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.flow-node-summary {
+  color: #334155;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.flow-node-more {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #2563eb;
+}
+
+/* Edge chảy động cho toàn bộ luồng; edge dẫn vào bước đang chạy đậm hơn */
+.react-flow__edge-path { stroke: #cbd5e1; }
+.flow-edge-active .react-flow__edge-path { stroke: #f59e0b; stroke-width: 2; }
+
+.flow-node-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 14px;
+  margin-bottom: 2px;
+}
+
+.flow-node-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.flow-node-badge.start { background: #dcfce7; color: #15803d; }
+.flow-node-badge.end { background: #e0e7ff; color: #4338ca; }
+
+.flow-node-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-left: auto;
+  background: #22c55e;
+}
+
+.flow-node-status-dot.active {
+  background: #f59e0b;
+  box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.6);
+  animation: flow-pulse 1.2s ease-out infinite;
+}
+
+/* Node đang chạy: viền sáng + nhịp đập để biết agent đang ở bước nào */
+.flow-node-status-active {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
+  animation: flow-node-glow 1.4s ease-in-out infinite;
+}
+
+.flow-node-start { border-top: 2px solid #22c55e; }
+.flow-node-end { border-bottom: 2px solid #6366f1; }
+
+@keyframes flow-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.6); }
+  100% { box-shadow: 0 0 0 8px rgba(245, 158, 11, 0); }
+}
+
+@keyframes flow-node-glow {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2); }
+  50% { box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.4); }
+}
+
+.flow-node-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.flow-node-details {
+  margin: 0;
+  padding-left: 14px;
+  color: #475569;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.flow-node-details li {
+  list-style: disc;
+  word-break: break-word;
+}
+
+.flow-node-retrieval { border-left-color: #0ea5e9; }
+.flow-node-lane { border-left-color: #38bdf8; background: #f8fbff; }
+.flow-node-plan { border-left-color: #a855f7; }
+.flow-node-reasoning,
+.flow-node-decision { border-left-color: #f59e0b; }
+.flow-node-evaluation { border-left-color: #10b981; }
+.flow-node-llm { border-left-color: #6366f1; }
+.flow-node-answer { border-left-color: #22c55e; }
+.flow-node-context { border-left-color: #94a3b8; }
+.flow-node-error { border-left-color: #ef4444; }
