@@ -16,7 +16,7 @@ module AgentLoop
     def self.enqueue(conversation:, content:, model: nil)
       # Runner thực thi trong Thread riêng. Preload các class artifact tại request
       # thread để Zeitwerk không phải autoload chúng giữa lúc worker đang chạy.
-      [ ModelArtifactBuilder, ModelArtifactVerifier ].each(&:name)
+      [ ModelArtifactBuilder, ModelArtifactVerifier, ModelSourceEvaluator ].each(&:name)
       recover_stale_runs!(conversation: conversation)
 
       user_message = conversation.agent_messages.create!(role: "user", content: content)
@@ -683,11 +683,13 @@ module AgentLoop
       web_pages = Array(state[:web_pages])
       return if documents.blank? && web_results.blank? && web_pages.blank?
 
-      evaluation = SearchResultEvaluator.new(
+      evaluation = ModelSourceEvaluator.new(
         query: message,
         documents: documents,
         web_results: web_results,
-        web_pages: web_pages
+        web_pages: web_pages,
+        shared_state: shared_state_for(state, current_action: "evaluate_sources"),
+        client: local_model_client
       ).call
 
       state[:documents] = evaluation[:documents]

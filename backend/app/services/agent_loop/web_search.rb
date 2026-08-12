@@ -315,8 +315,6 @@ module AgentLoop
 
       host = host_for(url)
       return "Domain bị chặn hoặc nguồn kém phù hợp" if BLOCKED_DOMAIN_PARTS.any? { |part| host.include?(part) }
-      return "Không đủ khớp với #{@search_query}" unless relevant_result?(title, url, snippet)
-
       nil
     end
 
@@ -406,9 +404,7 @@ module AgentLoop
     end
 
     def ranked_results(results)
-      items = results.uniq { |item| [ item[:title], item[:url] ] }.sort_by { |item| result_rank(item) }
-      trusted = items.select { |item| trusted_source?(item[:url]) }
-      trusted.any? ? trusted : items
+      results.uniq { |item| [ item[:title], item[:url] ] }
     end
 
     def record_candidate(title, url, snippet, reason)
