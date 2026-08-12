@@ -1,9 +1,10 @@
 require "json"
 
 module AgentLoop
-  # Ở mỗi vòng lặp, hỏi model local (Ollama) chọn action tiếp theo từ danh sách
-  # tool. Model tự quyết định khi nào dừng (final_answer) nên số bước thay đổi
-  # theo từng câu hỏi. Nếu model lỗi/không phản hồi, rơi về luật dự phòng.
+  # Plan đã được tạo ở bước phân tích là flow chính của lượt chạy. Mỗi vòng chỉ
+  # lấy bước chưa hoàn thành tiếp theo trong plan; model chỉ là fallback cho plan
+  # cũ/không hợp lệ. Các guard bên dưới vẫn có quyền can thiệp khi trạng thái
+  # thực tế yêu cầu làm rõ, kiểm tra hoặc sửa artifact.
   class ModelActionDecider
     ACTIONS = {
       "search_documents" => "Tìm tài liệu / dẫn chứng nội bộ liên quan tới yêu cầu.",
@@ -40,6 +41,7 @@ module AgentLoop
     def call
       return forced_final if @iteration >= @max_iterations
 
+      planned = planned_decision || decide
       guard_answered_clarification(
         guard_clarification_required(
           guard_direct_final_plan(
@@ -50,7 +52,7 @@ module AgentLoop
                     guard_repeated_web_search(
                       guard_repeated_search(
                         guard_stop_after_empty_web_search(
-                          guard_prefer_web_search(decide)
+                          guard_prefer_web_search(planned)
                         )
                       )
                     )
@@ -64,6 +66,48 @@ module AgentLoop
     end
 
     private
+
+    def planned_decision
+      action = next_planned_action
+      return unless action
+
+      build(
+        action,
+        "Thực hiện bước tiếp theo trong plan: #{planned_step_title(action)}.",
+        source: "plan"
+      )
+    end
+
+    def next_planned_action
+      planned_steps.find { |step| !plan_step_completed?(step[:action]) }&.fetch(:action)
+    end
+
+    def planned_steps
+      Array(@plan&.dig(:steps)).filter_map do |step|
+        action = (step[:action] || step["action"]).to_s
+        next unless ACTIONS.key?(action)
+
+        { action: action, title: (step[:title] || step["title"]).to_s }
+      end
+    end
+
+    def plan_step_completed?(action)
+      case action
+      when "search_documents" then search_attempts.positive?
+      when "web_search" then web_attempts.positive?
+      when "draft_artifact" then artifact?
+      when "verify_artifact" then latest_artifact_status.present?
+      when "revise_artifact"
+        Array(@state[:working_notes]).any? { |note| (note[:action] || note["action"]).to_s == "revise_artifact" }
+      when "ask_clarification" then clarified? || answered_clarification?
+      when "final_answer" then false
+      else false
+      end
+    end
+
+    def planned_step_title(action)
+      planned_steps.find { |step| step[:action] == action }&.dig(:title).presence || ACTIONS[action]
+    end
 
     def guard_direct_final_plan(decision)
       return decision if decision[:action] == "final_answer"
@@ -336,7 +380,7 @@ module AgentLoop
     end
 
     def markdown(action, reason, source)
-      label = { "model" => "model chọn", "fallback" => "luật dự phòng", "guard" => "giới hạn an toàn" }.fetch(source, source)
+      label = { "plan" => "theo plan", "model" => "model chọn", "fallback" => "luật dự phòng", "guard" => "giới hạn an toàn" }.fetch(source, source)
       "### Quyết định vòng #{@iteration} (#{label})\n- Action: `#{action}`\n- Lý do: #{reason}"
     end
 

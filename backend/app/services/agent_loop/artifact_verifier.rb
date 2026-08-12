@@ -29,11 +29,22 @@ module AgentLoop
     def table_checks
       return [] unless table_request?
 
+      return comparison_table_checks if comparison_table?
+
       [
         check("Đúng header bảng estimate", content.include?(ESTIMATE_HEADER), "Bảng estimate phải có 4 cột: Item, Feature, Effort (Man-day), Remarks."),
         check("Có ít nhất một dòng dữ liệu", table_data_rows.positive?, "Bảng cần có ít nhất một item estimate."),
         check("Mỗi dòng đúng 4 cột", table_rows_have_four_columns?, "Mỗi dòng estimate phải có đúng 4 cột để render thành bảng."),
         check("Có file CSV đi kèm", csv_file_present?, "Output dạng bảng cần có file .csv để tải xuống/xem trước.")
+      ]
+    end
+
+    def comparison_table_checks
+      [
+        check("Có header CSV", table_header_cells.count >= 2, "CSV cần có ít nhất 2 cột header."),
+        check("Có ít nhất một dòng dữ liệu", table_data_rows.positive?, "CSV cần có ít nhất một dòng dữ liệu."),
+        check("Mỗi dòng khớp số cột header", table_rows_match_header?, "Các dòng dữ liệu cần có cùng số cột với header."),
+        check("Có file CSV đi kèm", csv_file_present?, "Output dạng CSV cần có file .csv để tải xuống/xem trước.")
       ]
     end
 
@@ -65,6 +76,19 @@ module AgentLoop
       table_body_rows.all? { |line| line.split("|").map(&:strip).reject(&:blank?).count == 4 }
     end
 
+    def table_rows_match_header?
+      table_body_rows.all? { |line| table_cells(line).count == table_header_cells.count }
+    end
+
+    def table_header_cells
+      @table_header_cells ||= content.lines.map(&:strip).find { |line| line.start_with?("|") && !line.include?("---") }
+        .then { |line| table_cells(line) }
+    end
+
+    def table_cells(line)
+      line.to_s.delete_prefix("|").delete_suffix("|").split("|").map(&:strip)
+    end
+
     def table_body_rows
       content.lines.map(&:strip).select do |line|
         line.start_with?("|") && !line.include?("---") && !line.include?(ESTIMATE_HEADER)
@@ -78,11 +102,15 @@ module AgentLoop
         normalized_message.include?("lap bang")
     end
 
+    def comparison_table?
+      normalized_message.match?(/\b(compare|comparison|so sanh)\b/) || normalized_message.include?("so sánh")
+    end
+
     def csv_file_present?
       Array(@artifact[:files]).any? do |file|
         file[:name].to_s.end_with?(".csv") &&
           file[:mime].to_s.include?("csv") &&
-          file[:content].to_s.include?("Item,Feature,Effort (Man-day),Remarks")
+          (comparison_table? ? file[:content].to_s.lines.count >= 2 : file[:content].to_s.include?("Item,Feature,Effort (Man-day),Remarks"))
       end
     end
 

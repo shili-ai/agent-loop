@@ -1,15 +1,21 @@
 module AgentLoop
   class ArtifactReviser
-    def initialize(artifact:, message:, intent:, documents:, checks:)
+    def initialize(artifact:, message:, intent:, documents:, checks:, source_content: nil)
       @artifact = artifact || {}
       @message = message.to_s
       @intent = intent
       @documents = documents || []
       @checks = checks || []
+      @source_content = source_content.to_s
     end
 
     def call
-      rebuilt = ArtifactBuilder.new(intent: @intent, documents: @documents, message: @message).call
+      rebuilt = ArtifactBuilder.new(
+        intent: @intent,
+        documents: @documents,
+        message: @message,
+        source_content: @source_content
+      ).call
       {
         tool: rebuilt[:tool],
         artifact: rebuilt[:artifact],

@@ -5,7 +5,7 @@ import type { AgentStep } from "../types/agent";
 // lớn dần LIVE trong lúc agent suy luận — không chờ step "flow" ở cuối run.
 // Logic này mirror backend AgentLoop::RunFlowBuilder.
 
-export type FlowNodeStatus = "done" | "active";
+export type FlowNodeStatus = "done" | "active" | "pending" | "blocked";
 
 export type FlowNodeData = {
   kind: string;
@@ -16,7 +16,7 @@ export type FlowNodeData = {
   status: FlowNodeStatus;
   isStart: boolean;
   isEnd: boolean;
-  stepIndex: number;
+  stepIndex: number | null;
 };
 
 export type FlowNode = {
@@ -63,22 +63,28 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 type LaneNode = { title: string; details: string[]; kind?: string };
+type PlannedAction = { action: string; title: string; detail: string; expected: string };
 
-export function buildRunFlowGraph(steps: AgentStep[], options: { running?: boolean } = {}): FlowGraph {
+export function buildRunFlowGraph(steps: AgentStep[], options: { running?: boolean; blocked?: boolean } = {}): FlowGraph {
+  const plannedActions = plannedActionsFromRun(steps);
+  if (plannedActions.length) return buildPlannedFlowGraph(steps, plannedActions, options);
+
   const nodes: FlowNode[] = [];
   const edges: FlowEdge[] = [];
   let row = 0;
   let prevExits: string[] = [];
 
   const lastIndex = steps.length - 1;
-  // Khi đang chạy: bước mới nhất là "frontier" đang xử lý -> đánh dấu active.
-  const activeIndex = options.running ? lastIndex : -1;
+  // Ưu tiên trạng thái worker từ backend; fallback về step mới nhất khi polling
+  // chưa kịp nhận status của step.
+  const runningIndex = steps.findLastIndex((step) => asText(step.data?.status) === "running");
+  const activeIndex = runningIndex >= 0 ? runningIndex : options.running ? lastIndex : -1;
   const activeIds = new Set<string>();
 
   steps.forEach((step, index) => {
     const base = `S${index + 1}`;
     const lanes = stepLanes(step);
-    const status: FlowNodeStatus = index === activeIndex ? "active" : "done";
+    const status: FlowNodeStatus = stepStatus(step, index, activeIndex);
     const isStart = index === 0;
     const isEnd = !options.running && index === lastIndex;
     if (status === "active") activeIds.add(base);
@@ -130,7 +136,120 @@ export function buildRunFlowGraph(steps: AgentStep[], options: { running?: boole
     prevExits = exits;
   });
 
+  appendPlannedNodes(nodes, edges, steps, row, prevExits, options, activeIds);
+
   return { nodes, edges };
+}
+
+// Flow mode ưu tiên biểu diễn cấu trúc plan thay vì từng log nội bộ. Trace mode
+// vẫn hiển thị đầy đủ decision/LLM/evaluation theo đúng thứ tự thực thi.
+function buildPlannedFlowGraph(steps: AgentStep[], plan: PlannedAction[], options: { running?: boolean; blocked?: boolean }): FlowGraph {
+  const nodes: FlowNode[] = [];
+  const edges: FlowEdge[] = [];
+  const activeIds = new Set<string>();
+  const planIndex = steps.findLastIndex((step) => step.kind === "plan");
+  const prefix = steps.slice(0, planIndex + 1);
+  let row = 0;
+  let exits: string[] = [];
+
+  prefix.forEach((step, index) => {
+    const id = `S${index + 1}`;
+    const status = stepStatus(step, index, -1);
+    nodes.push(
+      graphNode(id, step.kind, nodeTitle(step), detailLines(step), 0, row, {
+        status,
+        isStart: index === 0,
+        isEnd: false,
+        stepIndex: index,
+        summary: asText(step.summary),
+        debug: stepDebug(step),
+      })
+    );
+    exits.forEach((from) => edges.push(edge(from, id, activeIds)));
+    exits = [id];
+    row += 1;
+  });
+
+  const executions = plannedExecutions(steps.slice(planIndex + 1), plan, planIndex + 1);
+  let hasActiveNode = false;
+  let actionIndex = 0;
+  while (actionIndex < plan.length) {
+    const group = parallelPlannedSteps(plan, actionIndex);
+    const ids = group.map((planned, branchIndex) => {
+      const execution = executions[actionIndex + branchIndex];
+      const status = plannedActionStatus(execution, options, hasActiveNode);
+      if (status === "active") hasActiveNode = true;
+      const id = `P${actionIndex + branchIndex + 1}`;
+      if (status === "active") activeIds.add(id);
+      nodes.push(
+        graphNode(id, `plan-${planned.action}`, planned.title || ACTION_LABELS[planned.action] || planned.action, plannedActionDetails(planned, status, group.length > 1), branchIndex - (group.length - 1) / 2, row, {
+          status,
+          isStart: false,
+          isEnd: planned.action === "final_answer" && status === "done",
+          stepIndex: execution?.index ?? null,
+          summary: execution ? asText(execution.step.summary) : "",
+          debug: JSON.stringify({ planned_action: planned.action, status, execution_step: execution?.step.kind }, null, 2),
+        })
+      );
+      return id;
+    });
+    ids.forEach((id) => exits.forEach((from) => edges.push(edge(from, id, activeIds))));
+    exits = ids;
+    row += 1;
+    actionIndex += group.length;
+  }
+
+  return { nodes, edges };
+}
+
+function plannedActionsFromRun(steps: AgentStep[]): PlannedAction[] {
+  const planStep = steps.findLast((step) => step.kind === "plan");
+  return asRecords(planStep?.data?.steps)
+    .map((step) => ({
+      action: asText(step.action),
+      title: asText(step.title),
+      detail: asText(step.detail),
+      expected: asText(step.expected),
+    }))
+    .filter((step) => Boolean(ACTION_LABELS[step.action]));
+}
+
+function plannedExecutions(steps: AgentStep[], plan: PlannedAction[], offset: number) {
+  let cursor = 0;
+  return plan.map((planned) => {
+    for (let index = cursor; index < steps.length; index += 1) {
+      if (actionForStep(steps[index]) !== planned.action) continue;
+      cursor = index + 1;
+      return { step: steps[index], index: index + offset };
+    }
+    return undefined;
+  });
+}
+
+function parallelPlannedSteps(plan: PlannedAction[], index: number) {
+  const pair = plan.slice(index, index + 2);
+  return pair.length === 2 && pair.some((step) => step.action === "search_documents") && pair.some((step) => step.action === "web_search") ? pair : [plan[index]];
+}
+
+function plannedActionStatus(
+  execution: { step: AgentStep; index: number } | undefined,
+  options: { running?: boolean; blocked?: boolean },
+  hasActiveNode: boolean
+): FlowNodeStatus {
+  if (execution) return stepStatus(execution.step, execution.index, -1);
+  if (options.blocked) return "blocked";
+  if (options.running && !hasActiveNode) return "active";
+  return "pending";
+}
+
+function plannedActionDetails(step: PlannedAction, status: FlowNodeStatus, parallel: boolean) {
+  return compactLines([
+    step.detail,
+    step.expected ? `Mong đợi: ${step.expected}` : "",
+    parallel ? "Nhánh thu thập nguồn · thực thi tuần tự theo plan" : "",
+    status === "pending" ? "Đang chờ bước trước hoàn tất" : "",
+    status === "blocked" ? "Bị chặn: lượt chạy chưa thể tiếp tục" : "",
+  ]);
 }
 
 function graphNode(
@@ -140,7 +259,7 @@ function graphNode(
   details: string[],
   col: number,
   row: number,
-  meta: { status: FlowNodeStatus; isStart: boolean; isEnd: boolean; stepIndex: number; summary: string; debug: string }
+  meta: { status: FlowNodeStatus; isStart: boolean; isEnd: boolean; stepIndex: number | null; summary: string; debug: string }
 ): FlowNode {
   return {
     id,
@@ -150,9 +269,95 @@ function graphNode(
 }
 
 function edge(source: string, target: string, activeIds: Set<string>): FlowEdge {
-  // Animate MỌI edge để cả luồng nhìn như đang chảy; edge dẫn vào node đang chạy
-  // sẽ nổi bật hơn nhờ class riêng ở tầng render.
-  return { id: `${source}-${target}`, source, target, animated: true, intoActive: activeIds.has(target) };
+  // Chỉ edge đi vào node active mới chuyển động, để bước pending không tạo cảm
+  // giác đang được xử lý.
+  return { id: `${source}-${target}`, source, target, animated: activeIds.has(target), intoActive: activeIds.has(target) };
+}
+
+function stepStatus(step: AgentStep, index: number, activeIndex: number): FlowNodeStatus {
+  const status = asText(step.data?.status);
+  if (status === "failed" || step.kind === "error") return "blocked";
+  if (status === "running" || index === activeIndex) return "active";
+  return "done";
+}
+
+function appendPlannedNodes(
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+  steps: AgentStep[],
+  startRow: number,
+  previousExits: string[],
+  options: { running?: boolean; blocked?: boolean },
+  activeIds: Set<string>
+) {
+  const remainingActions = remainingPlanActions(steps);
+  if (!remainingActions.length) return;
+
+  const hasActiveNode = nodes.some((node) => node.data.status === "active");
+  let row = startRow;
+  let exits = previousExits;
+  let actionIndex = 0;
+  while (actionIndex < remainingActions.length) {
+    const actions = parallelPlanActions(remainingActions, actionIndex);
+    const ids = actions.map((action, branchIndex) => {
+      const status: FlowNodeStatus = options.blocked ? "blocked" : options.running && !hasActiveNode && actionIndex === 0 && branchIndex === 0 ? "active" : "pending";
+      const id = `P${actionIndex + branchIndex + 1}`;
+      if (status === "active") activeIds.add(id);
+      nodes.push(
+        graphNode(id, `plan-${action}`, ACTION_LABELS[action] ?? action, [planStatusDetail(status, actions.length > 1)], branchIndex - (actions.length - 1) / 2, row, {
+          status,
+          isStart: false,
+          isEnd: false,
+          stepIndex: null,
+          summary: "",
+          debug: JSON.stringify({ planned_action: action, status, visual_group: actions.length > 1 ? "retrieval" : undefined }, null, 2),
+        })
+      );
+      return id;
+    });
+    ids.forEach((id) => exits.forEach((from) => edges.push(edge(from, id, activeIds))));
+    exits = ids;
+    row += 1;
+    actionIndex += actions.length;
+  }
+}
+
+// Hai nguồn độc lập có thể vẽ thành nhánh song song để dễ đọc, nhưng Runner
+// vẫn thực thi từng action theo plan; đây không phải lệnh chạy đồng thời.
+function parallelPlanActions(actions: string[], index: number) {
+  const pair = actions.slice(index, index + 2);
+  return pair.length === 2 && pair.includes("search_documents") && pair.includes("web_search") ? pair : [actions[index]];
+}
+
+function remainingPlanActions(steps: AgentStep[]) {
+  const planIndex = steps.findLastIndex((step) => step.kind === "plan");
+  if (planIndex < 0) return [];
+
+  const planned = asRecords(steps[planIndex].data?.steps)
+    .map((step) => asText(step.action))
+    .filter((action) => ACTION_LABELS[action]);
+  const executed = steps.slice(planIndex + 1).map(actionForStep).filter(Boolean);
+  let cursor = 0;
+  executed.forEach((action) => {
+    if (action === planned[cursor]) cursor += 1;
+  });
+  return planned.slice(cursor);
+}
+
+function actionForStep(step: AgentStep) {
+  if (step.kind === "document_search") return "search_documents";
+  if (step.kind === "web_search") return "web_search";
+  if (step.kind === "verification") return "verify_artifact";
+  if (step.kind === "clarification") return "ask_clarification";
+  if (step.kind === "answer") return "final_answer";
+  if (step.kind === "artifact") return step.title.toLowerCase().includes("sửa") ? "revise_artifact" : "draft_artifact";
+  return "";
+}
+
+function planStatusDetail(status: FlowNodeStatus, parallel = false) {
+  if (status === "active") return "Đang thực hiện theo plan";
+  if (status === "blocked") return "Bị chặn: lượt chạy chưa thể tiếp tục";
+  return parallel ? "Nhánh thu thập nguồn · thực thi tuần tự theo plan" : "Đang chờ bước trước hoàn tất";
 }
 
 function nodeTitle(step: AgentStep): string {

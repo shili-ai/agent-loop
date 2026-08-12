@@ -84,7 +84,7 @@ function collectLibraryFromRuns(runs: AgentRun[]): ConversationLibrary {
               mime: asString(file.mime) || mimeFromName(name),
             });
           });
-        } else {
+        } else if (asBoolean(artifact.downloadable)) {
           const bullets = asArray(artifact.bullets);
           push(outputs, {
             kind: "artifact",
@@ -157,4 +157,8 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+function asBoolean(value: unknown): boolean {
+  return value === true;
 }

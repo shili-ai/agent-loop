@@ -10,8 +10,9 @@ module Api
 
     def show
       conversation = AgentConversation.find(params[:id])
+      AgentLoop::Runner.recover_stale_runs!(conversation: conversation)
 
-      render json: AgentConversationSerializer.new(conversation).as_json
+      render json: AgentConversationSerializer.new(conversation.reload).as_json
     end
 
     def create

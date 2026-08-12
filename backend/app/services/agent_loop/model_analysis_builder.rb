@@ -97,6 +97,7 @@ module AgentLoop
 
       steps = normalize_steps(parsed[:steps])
       steps = normalize_steps(fallback[:steps]) if steps.empty?
+      steps = steps.reject { |step| %w[draft_artifact verify_artifact revise_artifact].include?(step[:action]) } unless artifact_requested?(intent)
       steps = ensure_final_step(steps)
       actions = steps.map { |step| step[:action] }.uniq
       keywords = normalize_keywords(parsed[:keywords]).presence || fallback[:keywords]
@@ -119,6 +120,19 @@ module AgentLoop
         .reject { |value| value.blank? || value.length < 2 }
         .uniq
         .first(8)
+    end
+
+    def artifact_requested?(intent)
+      return true if %w[proposal battlecard follow_up rfp_answer].include?(intent)
+
+      normalized = @message.to_s.downcase
+        .unicode_normalize(:nfkd)
+        .gsub(/\p{Mn}/, "")
+        .gsub("đ", "d")
+      normalized.match?(/\b(csv|markdown|md|file|tep|tai lieu|document)\b/) ||
+        normalized.include?("tao file") ||
+        normalized.include?("xuat file") ||
+        normalized.include?("lap bang")
     end
 
     # Chấp nhận cả format mới (steps có detail) lẫn format cũ (mảng action string).

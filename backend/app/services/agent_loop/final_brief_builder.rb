@@ -89,7 +89,7 @@ module AgentLoop
 
     def draft
       artifact = @tool_result[:artifact]
-      return nil unless artifact
+      return nil unless visible_artifact?(artifact)
 
       {
         title: artifact[:title],
@@ -114,12 +114,20 @@ module AgentLoop
 
     def output_contract
       artifact = @tool_result[:artifact]
+      return {} unless visible_artifact?(artifact)
+
       content = artifact&.dig(:content).to_s
       {
         preserve_draft_content: content.present?,
         markdown_table_required: table_request? || content.include?("| Item | Feature | Effort (Man-day) | Remarks |"),
         required_columns: table_request? ? [ "Item", "Feature", "Effort (Man-day)", "Remarks" ] : nil
       }.compact
+    end
+
+    def visible_artifact?(artifact)
+      return false unless artifact
+
+      artifact[:downloadable] == true || artifact["downloadable"] == true || Array(artifact[:files] || artifact["files"]).any?
     end
 
     def table_request?

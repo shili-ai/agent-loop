@@ -3825,11 +3825,36 @@ a.step-result-url:hover { text-decoration: underline; }
   animation: flow-pulse 1.2s ease-out infinite;
 }
 
+.flow-node-status-dot.pending { background: #94a3b8; }
+.flow-node-status-dot.blocked { background: #ef4444; }
+
+.flow-node-status-label {
+  margin-left: 2px;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.flow-node-status-label.active { color: #b45309; }
+.flow-node-status-label.pending { color: #64748b; }
+.flow-node-status-label.blocked { color: #b91c1c; }
+
 /* Node đang chạy: viền sáng + nhịp đập để biết agent đang ở bước nào */
 .flow-node-status-active {
   border-color: #f59e0b;
   box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
   animation: flow-node-glow 1.4s ease-in-out infinite;
+}
+
+.flow-node-status-pending {
+  border-color: #cbd5e1;
+  border-style: dashed;
+  background: #f8fafc;
+}
+
+.flow-node-status-blocked {
+  border-color: #fca5a5;
+  background: #fef2f2;
 }
 
 .flow-node-start { border-top: 2px solid #22c55e; }

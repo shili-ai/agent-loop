@@ -2,10 +2,11 @@ require "csv"
 
 module AgentLoop
   class ArtifactBuilder
-    def initialize(intent:, documents:, message: nil)
+    def initialize(intent:, documents:, message: nil, source_content: nil)
       @intent = intent
       @documents = documents
       @message = message.to_s
+      @source_content = source_content.to_s
     end
 
     def call
@@ -42,6 +43,8 @@ module AgentLoop
       when "rfp_answer" then rfp_answer
       else presales_advice
       end
+      @artifact[:downloadable] = explicit_output_request?
+      @artifact
     end
 
     def markdown_output
@@ -55,6 +58,8 @@ module AgentLoop
     end
 
     def markdown_table
+      return comparison_markdown_table if comparison_table
+
       {
         title: table_title,
         bullets: table_rows.map { |row| row[0] },
@@ -74,6 +79,25 @@ module AgentLoop
       lines << "**Total estimate:** khoảng **2.5-4 man-days** cho bản login Google cơ bản, tuỳ app đã có user/session hay chưa."
       lines << ""
       lines << "> Giả định: Rails app đã có database và môi trường dev/prod cơ bản; estimate chưa bao gồm phân quyền phức tạp hoặc SSO enterprise."
+      lines.join("\n")
+    end
+
+    def comparison_markdown_table
+      table = comparison_table
+      {
+        title: comparison_title(table[:headers]),
+        bullets: table[:rows].map { |row| row.first },
+        content: comparison_table_content(table),
+        sources: source_titles,
+        files: [ comparison_csv_file(table) ]
+      }
+    end
+
+    def comparison_table_content(table)
+      lines = [ "# #{comparison_title(table[:headers])}", "" ]
+      lines << "| #{table[:headers].join(' | ')} |"
+      lines << "|#{Array.new(table[:headers].length, '---').join('|')}|"
+      table[:rows].each { |row| lines << "| #{row.join(' | ')} |" }
       lines.join("\n")
     end
 
@@ -104,6 +128,63 @@ module AgentLoop
           csv << [ section[:item], section[:feature], section[:effort], section[:remarks] ]
         end
       end
+    end
+
+    def comparison_csv_file(table)
+      {
+        title: "#{comparison_title(table[:headers])}.csv",
+        name: "#{comparison_filename(table[:headers])}.csv",
+        mime: "text/csv;charset=utf-8",
+        content: CSV.generate do |csv|
+          csv << table[:headers]
+          table[:rows].each { |row| csv << row }
+        end
+      }
+    end
+
+    # The assistant's previous answer is the authoritative source when a user
+    # asks to export a comparison that was just shown in the conversation.
+    def comparison_table
+      return @comparison_table if defined?(@comparison_table)
+      return @comparison_table = nil unless comparison_request?
+
+      lines = @source_content.lines.map(&:strip)
+      header_index = lines.each_index.find { |index| markdown_table_separator?(lines[index + 1]) }
+      return @comparison_table = nil unless header_index
+
+      headers = markdown_cells(lines[header_index])
+      rows = lines[(header_index + 2)..].to_a.take_while { |line| line.start_with?("|") }
+        .map { |line| markdown_cells(line) }
+        .select { |row| row.length == headers.length && row.any?(&:present?) }
+      @comparison_table = headers.length >= 2 && rows.any? ? { headers: headers, rows: rows } : nil
+    end
+
+    def comparison_request?
+      normalized_message.match?(/\b(compare|comparison|so sanh)\b/) || normalized_message.include?("so sánh")
+    end
+
+    def markdown_table_separator?(line)
+      line.to_s.strip.match?(/\A\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\z/)
+    end
+
+    def markdown_cells(line)
+      line.to_s.strip.delete_prefix("|").delete_suffix("|").split("|").map(&:strip)
+    end
+
+    def comparison_title(headers)
+      return "So sánh #{headers[1]} và #{headers[2]}" if headers.length >= 3
+
+      "Bảng so sánh"
+    end
+
+    def comparison_filename(headers)
+      comparison_title(headers).unicode_normalize(:nfkd)
+        .gsub(/\p{Mn}/, "")
+        .gsub("đ", "d")
+        .gsub(/[^a-zA-Z0-9]+/, "-")
+        .delete_prefix("-")
+        .delete_suffix("-")
+        .downcase
     end
 
     def table_title
@@ -205,6 +286,13 @@ module AgentLoop
       normalized_message.match?(/\b(table|bang|bảng)\b/) ||
         normalized_message.match?(/\bcsv\b/) ||
         normalized_message.include?("lập bảng") ||
+        normalized_message.include?("lap bang")
+    end
+
+    def explicit_output_request?
+      normalized_message.match?(/\b(csv|markdown|md|file|tep|tai lieu|document)\b/) ||
+        normalized_message.include?("tao file") ||
+        normalized_message.include?("xuat file") ||
         normalized_message.include?("lap bang")
     end
 

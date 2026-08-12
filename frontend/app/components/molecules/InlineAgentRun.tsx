@@ -35,8 +35,11 @@ export default function InlineAgentRun({ finalAnswer, onOpenLibraryItem, pending
   const steps = run?.steps ?? [];
   const visibleSteps = steps.filter((step) => step.kind !== "flow");
   const running = pending || run?.status === "running";
+  const blocked =
+    !running &&
+    (run?.status === "failed" || run?.status === "cancelled" || visibleSteps.some((step) => step.kind === "clarification"));
   // Dựng sơ đồ LIVE từ các bước đã stream về (không chờ step "flow" ở cuối run).
-  const flowGraph = visibleSteps.length ? buildRunFlowGraph(visibleSteps, { running }) : null;
+  const flowGraph = visibleSteps.length ? buildRunFlowGraph(visibleSteps, { running, blocked }) : null;
   const [expanded, setExpanded] = useState(false);
   const [viewMode, setViewMode] = useState<"trace" | "flow">("flow");
   const [selectedStepIndex, setSelectedStepIndex] = useState<number | null>(null);

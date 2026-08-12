@@ -65,7 +65,7 @@ class AgentConversationSerializer
         intent: run.intent,
         user_message_id: run.user_message_id,
         assistant_message_id: run.assistant_message_id,
-        steps: run.agent_steps.order(:position).map do |step|
+        steps: run.agent_steps.map do |step|
           {
             id: step.id,
             position: step.position,

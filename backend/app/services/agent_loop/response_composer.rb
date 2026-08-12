@@ -10,7 +10,7 @@ module AgentLoop
 
     def call
       return no_reliable_web_answer if no_reliable_web_evidence?
-      artifact = @tool_result[:artifact]
+      artifact = visible_artifact
       return structured_artifact_answer(artifact) if structured_artifact?(artifact)
       return model_answer_with_web_sources if @model_answer.present?
       return clarification_answer if @clarification.present?
@@ -85,6 +85,15 @@ module AgentLoop
 
     def artifact_files(artifact)
       Array(artifact[:files] || artifact["files"])
+    end
+
+    def visible_artifact
+      artifact = @tool_result[:artifact]
+      return nil unless artifact
+      return artifact if artifact[:downloadable] == true || artifact["downloadable"] == true
+      return artifact if artifact_files(artifact).any?
+
+      nil
     end
 
     def web_search_attempted?

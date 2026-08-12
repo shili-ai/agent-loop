@@ -46,7 +46,7 @@ module AgentLoop
           "Có nguồn web đạt chuẩn hoặc xác nhận không có nguồn phù hợp.")
       end
 
-      unless @intent == "document_search"
+      if artifact_requested?
         list << step("draft_artifact", "Soạn bản nháp",
           "Mình soạn bản nháp #{artifact_kind} dựa trên tài liệu và ngữ cảnh đã thu thập.",
           "Có bản nháp đủ cấu trúc theo yêu cầu.")
@@ -69,6 +69,19 @@ module AgentLoop
       when "rfp_answer" then "câu trả lời RFP/RFI"
       else "tài liệu"
       end
+    end
+
+    def artifact_requested?
+      return true if %w[proposal battlecard follow_up rfp_answer].include?(@intent)
+
+      normalized = @message.to_s.downcase
+        .unicode_normalize(:nfkd)
+        .gsub(/\p{Mn}/, "")
+        .gsub("đ", "d")
+      normalized.match?(/\b(csv|markdown|md|file|tep|tai lieu|document)\b/) ||
+        normalized.include?("tao file") ||
+        normalized.include?("xuat file") ||
+        normalized.include?("lap bang")
     end
 
     def step(action, title, detail, expected)

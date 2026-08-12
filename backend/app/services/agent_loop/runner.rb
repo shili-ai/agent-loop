@@ -6,13 +6,16 @@ module AgentLoop
   class Runner
     MAX_ITERATIONS = 20
     ARTIFACT_BUILD_TIMEOUT_SECONDS = 10
+    STALE_RUN_AFTER_SECONDS = 180
     class CancelledRunError < StandardError; end
+    class InactiveRunError < StandardError; end
     class ArtifactBuildTimeout < StandardError; end
 
     def self.enqueue(conversation:, content:, model: nil)
       # Runner thực thi trong Thread riêng. Preload các class artifact tại request
       # thread để Zeitwerk không phải autoload chúng giữa lúc worker đang chạy.
       [ ArtifactBuilder, ArtifactVerifier, ArtifactReviser ].each(&:name)
+      recover_stale_runs!(conversation: conversation)
 
       user_message = conversation.agent_messages.create!(role: "user", content: content)
       run = conversation.agent_runs.create!(user_message: user_message, status: "running")
@@ -26,6 +29,31 @@ module AgentLoop
       end
 
       run
+    end
+
+    # Worker chạy trong process Rails. Nếu process bị restart hoặc worker chết,
+    # run cũ sẽ không tự đổi trạng thái và khóa ô chat mãi. Chỉ đóng run không có
+    # heartbeat quá lâu để giữ nguyên các action bình thường (LLM/web có thể mất vài chục giây).
+    def self.recover_stale_runs!(conversation:, now: Time.current)
+      cutoff = now - STALE_RUN_AFTER_SECONDS.seconds
+      conversation.agent_runs.where(status: "running").where("updated_at < ?", cutoff).find_each do |run|
+        run.agent_steps.find_each do |step|
+          next unless (step.data || {})["status"] == "running" || (step.data || {})[:status] == "running"
+
+          step.update!(
+            summary: "Bước này không còn worker xử lý; agent đã dừng để tránh chờ vô hạn.",
+            data: (step.data || {}).merge(status: "failed", error: "Worker không còn heartbeat trong hơn #{STALE_RUN_AFTER_SECONDS} giây.")
+          )
+        end
+        run.update!(status: "failed")
+        run.agent_steps.create!(
+          position: run.agent_steps.count + 1,
+          kind: "error",
+          title: "Lượt chạy đã dừng",
+          summary: "Worker không còn phản hồi trong hơn #{STALE_RUN_AFTER_SECONDS} giây; lượt chạy được đóng để bạn có thể thử lại.",
+          data: { status: "failed", error: "Stale agent run recovered automatically." }
+        )
+      end
     end
 
     def initialize(conversation:, content:, model: nil, run: nil)
@@ -105,7 +133,6 @@ module AgentLoop
         planned_actions: Array(plan[:actions]),
         planned_steps: Array(plan[:steps])
       )
-      run_broad_retrieval_after_plan(run, state, plan, request_content, context)
       check_cancelled!(run)
       loop_result = run_dynamic_loop(run, intent, state, plan, request_content, context)
       check_cancelled!(run)
@@ -140,6 +167,8 @@ module AgentLoop
       run
     rescue CancelledRunError
       run&.update!(status: "cancelled") if run&.status != "cancelled"
+      run
+    rescue InactiveRunError
       run
     rescue StandardError, LoadError => e
       run&.update!(status: "failed")
@@ -352,7 +381,7 @@ module AgentLoop
           "Mình đang soạn bản nháp dựa trên nguồn và ngữ cảnh hiện có.",
           { tools: [], documents_count: state[:documents].to_a.count, status: "running", request_started_at: Time.now.utc.iso8601(6) }
         )
-        artifact_result = build_artifact(intent: intent, documents: state[:documents], message: message)
+        artifact_result = build_artifact(intent: intent, documents: state[:documents], message: message, context: context)
         artifact = artifact_result[:artifact].merge(content: artifact_result[:output])
         state[:artifact] = artifact
         state[:artifact_tool] = artifact_result[:tool]
@@ -409,13 +438,14 @@ module AgentLoop
           { status: "running", request_started_at: Time.now.utc.iso8601(6) }
         )
         latest = latest_artifact_entry(state)
-        revision = ArtifactReviser.new(
+        revision = build_artifact_revision(
           artifact: latest&.dig(:artifact) || state[:artifact],
           message: message,
           intent: intent,
           documents: state[:documents],
-          checks: latest&.dig(:checks) || []
-        ).call
+          checks: latest&.dig(:checks) || [],
+          context: context
+        )
         revised_artifact = revision[:artifact].merge(content: revision[:output])
         state[:artifact] = revised_artifact
         state[:artifact_tool] = revision[:tool]
@@ -715,7 +745,12 @@ module AgentLoop
     end
 
     def check_cancelled!(run)
-      raise CancelledRunError if run.reload.status == "cancelled"
+      status = run.reload.status
+      return if status == "running"
+
+      raise CancelledRunError if status == "cancelled"
+
+      raise InactiveRunError, "Run không còn ở trạng thái running."
     end
 
     def generate_model_answer(run, intent, tool_result, context, request_content)
@@ -765,10 +800,40 @@ module AgentLoop
       @model.present? ? LocalModelClient.new(model: @model) : LocalModelClient.new
     end
 
-    def build_artifact(intent:, documents:, message:)
-      Timeout.timeout(ARTIFACT_BUILD_TIMEOUT_SECONDS, ArtifactBuildTimeout) do
-        ArtifactBuilder.new(intent: intent, documents: documents, message: message).call
+    def build_artifact(intent:, documents:, message:, context:)
+      with_artifact_timeout do
+        ArtifactBuilder.new(
+          intent: intent,
+          documents: documents,
+          message: message,
+          source_content: latest_assistant_content(context)
+        ).call
       end
+    end
+
+    def build_artifact_revision(artifact:, message:, intent:, documents:, checks:, context:)
+      with_artifact_timeout do
+        ArtifactReviser.new(
+          artifact: artifact,
+          message: message,
+          intent: intent,
+          documents: documents,
+          checks: checks,
+          source_content: latest_assistant_content(context)
+        ).call
+      end
+    end
+
+    def latest_assistant_content(context)
+      Array(context[:recent_messages]).reverse_each do |entry|
+        return entry[:content].to_s if entry[:role] == "assistant" && entry[:content].present?
+      end
+
+      ""
+    end
+
+    def with_artifact_timeout
+      Timeout.timeout(ARTIFACT_BUILD_TIMEOUT_SECONDS, ArtifactBuildTimeout) { yield }
     rescue ArtifactBuildTimeout
       raise ArtifactBuildTimeout, "Tạo file đã vượt quá #{ARTIFACT_BUILD_TIMEOUT_SECONDS} giây. Agent đã dừng bước này thay vì chờ vô hạn."
     end

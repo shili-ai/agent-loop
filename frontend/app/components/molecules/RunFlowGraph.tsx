@@ -49,6 +49,7 @@ function CardNode({ data }: NodeProps) {
         {node.isStart ? <span className="flow-node-badge start">▶ Bắt đầu</span> : null}
         {node.isEnd ? <span className="flow-node-badge end">■ Kết thúc</span> : null}
         <span className={`flow-node-status-dot ${node.status}`} />
+        <span className={`flow-node-status-label ${node.status}`}>{statusLabel(node.status)}</span>
       </div>
       <div className="flow-node-title">{node.title}</div>
       {shownDetails.length ? (
@@ -88,6 +89,10 @@ function CardNode({ data }: NodeProps) {
 const nodeTypes = { card: CardNode };
 const COLLAPSED_NODE_W = 240;
 const COLLAPSED_NODE_H = 92;
+
+function statusLabel(status: FlowNodeData["status"]) {
+  return { done: "Xong", active: "Đang chạy", pending: "Chờ", blocked: "Bị chặn" }[status];
+}
 
 // Lần đầu fit toàn bộ; khi có bước mới thì đưa camera về node mới nhất.
 // Khi bung chi tiết, fit lại để layout mở rộng không bị nằm ngoài khung nhìn.
