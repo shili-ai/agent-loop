@@ -97,7 +97,7 @@ module AgentLoop
 
       steps = normalize_steps(parsed[:steps])
       steps = normalize_steps(fallback[:steps]) if steps.empty?
-      steps = steps.reject { |step| %w[draft_artifact verify_artifact revise_artifact].include?(step[:action]) } unless artifact_requested?(intent)
+      steps = artifact_requested?(intent) ? artifact_plan_steps(steps) : steps.reject { |step| %w[draft_artifact verify_artifact revise_artifact].include?(step[:action]) }
       steps = ensure_final_step(steps)
       actions = steps.map { |step| step[:action] }.uniq
       keywords = normalize_keywords(parsed[:keywords]).presence || fallback[:keywords]
@@ -129,10 +129,21 @@ module AgentLoop
         .unicode_normalize(:nfkd)
         .gsub(/\p{Mn}/, "")
         .gsub("đ", "d")
-      normalized.match?(/\b(csv|markdown|md|file|tep|tai lieu|document)\b/) ||
+      normalized.match?(/\b(csv|markdown|md|file|tep|tai lieu|document|est|estimate)\b/) ||
+        normalized.match?(/ước lượng|uoc luong/) ||
         normalized.include?("tao file") ||
         normalized.include?("xuat file") ||
         normalized.include?("lap bang")
+    end
+
+    def artifact_plan_steps(steps)
+      final_step = steps.find { |step| step[:action] == "final_answer" } || { action: "final_answer", title: default_title("final_answer"), detail: ACTIONS_DETAIL_FALLBACK["final_answer"], expected: nil }
+      prefix = steps.reject { |step| %w[draft_artifact verify_artifact revise_artifact final_answer].include?(step[:action]) }
+      prefix + [
+        { action: "draft_artifact", title: default_title("draft_artifact"), detail: ACTIONS_DETAIL_FALLBACK["draft_artifact"], expected: nil },
+        { action: "verify_artifact", title: default_title("verify_artifact"), detail: ACTIONS_DETAIL_FALLBACK["verify_artifact"], expected: nil },
+        final_step
+      ]
     end
 
     # Chấp nhận cả format mới (steps có detail) lẫn format cũ (mảng action string).

@@ -135,7 +135,7 @@ module AgentLoop
         .unicode_normalize(:nfkd)
         .gsub(/\p{Mn}/, "")
         .gsub("đ", "d")
-      normalized.match?(/\b(table|bang)\b/) || normalized.include?("lap bang")
+      normalized.match?(/\b(table|bang|est|estimate)\b/) || normalized.match?(/ước lượng|uoc luong/) || normalized.include?("lap bang")
     end
 
     def missing_context

@@ -35,6 +35,7 @@ module AgentLoop
     end
 
     def required?
+      return true if estimate_request? && !estimate_context_available?
       return false if already_clarified?
       return true if risky_change?
       return true if ambiguous_change?
@@ -43,6 +44,7 @@ module AgentLoop
     end
 
     def reason
+      return "Estimate cần chốt phạm vi, định dạng đầu ra và đơn vị ước lượng trước khi tính." if estimate_request? && !estimate_context_available?
       return "Yêu cầu có thể xoá/đổi cấu trúc hoặc thay đổi hành vi quan trọng, cần xác nhận phạm vi trước khi làm." if risky_change?
       return "Yêu cầu còn có nhiều cách hiểu hợp lý, cần hỏi lại để chọn đúng hướng." if ambiguous_change?
 
@@ -50,6 +52,7 @@ module AgentLoop
     end
 
     def category
+      return "estimate" if estimate_request? && !estimate_context_available?
       return "risky_change" if risky_change?
       return "ambiguous_change" if ambiguous_change?
 
@@ -60,6 +63,17 @@ module AgentLoop
 
     def risky_change?
       normalized.match?(Regexp.union(RISKY_PATTERNS)) && !confirmed?
+    end
+
+    def estimate_request?
+      normalized.match?(/\b(est|estimate)\b/) || normalized.match?(/ước lượng|uoc luong/)
+    end
+
+    def estimate_context_available?
+      context_text = [ @message, *recent_user_messages ].join("\n").downcase
+      has_scope = context_text.match?(/phạm vi|scope|chức năng|tích hợp|integration|gateway|webhook/)
+      has_format_or_unit = context_text.match?(/markdown|csv|bảng|giờ|hour|man-day|usd|vnd|đơn vị|định dạng/)
+      has_scope && has_format_or_unit
     end
 
     def ambiguous_change?

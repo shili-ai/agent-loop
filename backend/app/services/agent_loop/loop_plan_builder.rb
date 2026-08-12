@@ -78,7 +78,8 @@ module AgentLoop
         .unicode_normalize(:nfkd)
         .gsub(/\p{Mn}/, "")
         .gsub("đ", "d")
-      normalized.match?(/\b(csv|markdown|md|file|tep|tai lieu|document)\b/) ||
+      normalized.match?(/\b(csv|markdown|md|file|tep|tai lieu|document|est|estimate)\b/) ||
+        normalized.match?(/ước lượng|uoc luong/) ||
         normalized.include?("tao file") ||
         normalized.include?("xuat file") ||
         normalized.include?("lap bang")

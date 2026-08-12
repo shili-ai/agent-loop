@@ -284,13 +284,15 @@ module AgentLoop
 
     def table_request?
       normalized_message.match?(/\b(table|bang|bảng)\b/) ||
-        normalized_message.match?(/\bcsv\b/) ||
+        normalized_message.match?(/\b(csv|est|estimate)\b/) ||
+        normalized_message.match?(/ước lượng|uoc luong/) ||
         normalized_message.include?("lập bảng") ||
         normalized_message.include?("lap bang")
     end
 
     def explicit_output_request?
-      normalized_message.match?(/\b(csv|markdown|md|file|tep|tai lieu|document)\b/) ||
+      normalized_message.match?(/\b(csv|markdown|md|file|tep|tai lieu|document|est|estimate)\b/) ||
+        normalized_message.match?(/ước lượng|uoc luong/) ||
         normalized_message.include?("tao file") ||
         normalized_message.include?("xuat file") ||
         normalized_message.include?("lap bang")

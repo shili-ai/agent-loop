@@ -97,7 +97,8 @@ module AgentLoop
 
     def table_request?
       normalized_message.match?(/\b(table|bang|bảng)\b/) ||
-        normalized_message.match?(/\bcsv\b/) ||
+        normalized_message.match?(/\b(csv|est|estimate)\b/) ||
+        normalized_message.match?(/ước lượng|uoc luong/) ||
         normalized_message.include?("lập bảng") ||
         normalized_message.include?("lap bang")
     end

@@ -126,6 +126,7 @@ module AgentLoop
     end
 
     def fallback_questions
+      return estimate_questions if clarification_policy.category == "estimate"
       return risky_change_questions if clarification_policy.category == "risky_change"
       return ambiguous_change_questions if clarification_policy.category == "ambiguous_change"
 
@@ -154,6 +155,29 @@ module AgentLoop
           question: "Giọng văn nên theo hướng nào?",
           type: "choice",
           options: [ "Chuyên nghiệp, trực tiếp", "Tư vấn mềm và thân thiện", "Thuyết phục theo số liệu", "Trung lập để dễ tuỳ chỉnh" ]
+        }
+      ]
+    end
+
+    def estimate_questions
+      [
+        {
+          id: "estimate_scope",
+          question: "Bạn muốn estimate những hạng mục/chức năng nào?",
+          type: "choice",
+          options: [ "Chỉ tích hợp cổng thanh toán", "Cổng thanh toán và webhook", "Bao gồm UI, backend và kiểm thử", "Gửi scope chi tiết riêng" ]
+        },
+        {
+          id: "estimate_format",
+          question: "Bạn muốn nhận estimate theo định dạng nào?",
+          type: "choice",
+          options: [ "Bảng Markdown", "File CSV", "Cả Markdown và CSV", "Proposal có bảng estimate" ]
+        },
+        {
+          id: "estimate_unit",
+          question: "Đơn vị ước lượng bạn cần là gì?",
+          type: "choice",
+          options: [ "Man-day", "Giờ công", "Chi phí USD", "Giờ công và chi phí USD" ]
         }
       ]
     end
