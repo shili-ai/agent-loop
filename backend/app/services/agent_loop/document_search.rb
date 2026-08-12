@@ -107,6 +107,7 @@ module AgentLoop
         type: "uploaded_file",
         source: document.agent_conversation_id.present? ? "chat://documents/#{document.id}" : "project://documents/#{document.id}",
         snippet: snippet_for(document),
+        content: document.content.to_s,
         filename: document.filename,
         document_id: document.id,
         search_provider: "uploaded",

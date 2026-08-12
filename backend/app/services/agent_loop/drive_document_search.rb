@@ -27,6 +27,7 @@ module AgentLoop
         type: document[:type] || document[:mime_type] || "google_drive",
         source: file_id.present? ? "drive://files/#{file_id}" : "drive://documents",
         snippet: snippet_for(content.to_s),
+        content: content.to_s,
         filename: document[:filename] || document[:name],
         document_id: file_id,
         url: url

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BulbOutlined,
   DownloadOutlined,
   EditOutlined,
   EllipsisOutlined,
@@ -101,6 +102,10 @@ export default function ConversationTools({
           <div className="output-panel-empty">Chưa có nguồn nào cho hội thoại này.</div>
         )}
       </div>
+
+      <div className="output-panel-divider" />
+
+      <ConversationContextSection conversation={conversation} />
     </div>
   );
 
@@ -159,6 +164,41 @@ export default function ConversationTools({
       </Popover>
     </div>
   );
+}
+
+function ConversationContextSection({ conversation }: { conversation: AgentConversation }) {
+  const context = asRecord(conversation.shared_context);
+  const latestRunContext = asRecord(conversation.runs.at(-1)?.shared_state);
+  const currentAction = text(context.current_action) || text(latestRunContext.current_action) || "Chưa có lượt chạy";
+  const objective = text(context.objective) || text(latestRunContext.objective);
+  const evidence = asRecord(context.evidence);
+  const count = (key: string) => (Array.isArray(evidence[key]) ? evidence[key].length : 0);
+
+  return (
+    <div className="output-panel-section conversation-context-section">
+      <div className="output-panel-title"><BulbOutlined /> Ngữ cảnh</div>
+      <div className="output-panel-context-summary">
+        <strong>{objective || "Chưa có mục tiêu được lưu"}</strong>
+        <span>Đang ở bước: {currentAction}</span>
+      </div>
+      <details className="output-panel-context-details">
+        <summary>Xem context của đoạn chat và lượt gần nhất</summary>
+        {conversation.instructions?.trim() ? <p><strong>Instructions:</strong> {conversation.instructions.trim()}</p> : null}
+        {objective ? <p><strong>Mục tiêu:</strong> {objective}</p> : null}
+        <p><strong>Evidence:</strong> {count("documents")} tài liệu, {count("web_results")} web, {count("web_pages")} trang đã đọc.</p>
+        {Object.keys(latestRunContext).length ? <p><strong>Lượt gần nhất:</strong> {text(latestRunContext.current_action) || "đã khởi tạo"}</p> : null}
+        <p className="output-panel-context-note">Context này được cập nhật sau từng action; Instructions không bị AI thay đổi.</p>
+      </details>
+    </div>
+  );
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function LibraryPanelItem({

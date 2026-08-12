@@ -5,7 +5,9 @@ require "timeout"
 module AgentLoop
   class Runner
     MAX_ITERATIONS = 20
-    ARTIFACT_BUILD_TIMEOUT_SECONDS = 10
+    # Soạn/revise artifact giờ là lượt gọi model thật; Ollama có thể mất hàng
+    # chục giây khi context lớn. Vẫn giới hạn để tránh worker treo vô hạn.
+    ARTIFACT_BUILD_TIMEOUT_SECONDS = 120
     STALE_RUN_AFTER_SECONDS = 180
     class CancelledRunError < StandardError; end
     class InactiveRunError < StandardError; end
@@ -84,11 +86,11 @@ module AgentLoop
       create_step(
         run,
         "reasoning",
-        analysis[:source] == "model" ? "Phân tích ý định bằng model" : "Phân tích ý định fallback",
+        "Phân tích ý định bằng model",
         analysis_summary(analysis, request_content),
         analysis.merge(
           intent_note: IntentNoteBuilder.new(intent: intent, message: request_content).call,
-          derived_from: analysis[:source] == "model" ? "model_analysis" : "fallback_analysis"
+          derived_from: "model_analysis"
         )
       )
 
@@ -103,16 +105,19 @@ module AgentLoop
       create_step(
         run,
         "plan",
-        analysis[:source] == "model" ? "Lập plan bằng model" : "Lập plan fallback",
+        "Lập plan bằng model",
         "Mình dự định lần lượt: #{plan_actions}. Mục tiêu: #{plan[:goal]}",
         plan.merge(
           source: analysis[:source],
-          derived_from: analysis[:source] == "model" ? "model_analysis" : "fallback_analysis"
+          derived_from: "model_analysis"
         )
       )
       check_cancelled!(run)
 
       state = {
+        request: request_content,
+        objective: plan[:goal],
+        plan: plan,
         documents: [],
         web_results: [],
         web_pages: [],
@@ -125,6 +130,7 @@ module AgentLoop
         web_attempts: 0,
         keywords: Array(analysis[:keywords])
       }
+      persist_shared_state(run, state, current_action: "plan_ready")
       append_working_note(
         state,
         action: "analysis",
@@ -142,6 +148,8 @@ module AgentLoop
       check_cancelled!(run)
       loop_result = run_dynamic_loop(run, intent, state, plan, request_content, context)
       check_cancelled!(run)
+      persist_shared_state(run, state, current_action: loop_result[:action])
+      persist_conversation_context(state, current_action: loop_result[:action])
       tool_result = build_tool_result(state)
       model_answer = loop_result[:action] == "final_answer" ? generate_model_answer(run, intent, tool_result, context, request_content) : nil
       check_cancelled!(run)
@@ -212,18 +220,10 @@ module AgentLoop
       result = analyzer.call_with_metrics
       analysis = result[:analysis]
       duration = format_duration(result.dig(:metrics, :total_duration_ms))
-      if analysis[:source] == "model"
-        step.update!(
-          summary: "#{initial_summary}\nModel #{analyzer.client.model} đã phân tích xong yêu cầu#{duration ? " (mất #{duration})" : ""}.",
-          data: result[:metrics].merge(prompt_messages: analyzer.prompt_messages, prompt_layers: analyzer.prompt_layer_summary, output: analysis[:output], raw: result[:raw], status: "completed")
-        )
-      else
-        step.update!(
-          title: "Fallback khi model phân tích lỗi",
-          summary: "Model phân tích bị lỗi, dùng IntentClassifier và LoopPlanBuilder dự phòng.",
-          data: result[:metrics].merge(prompt_messages: analyzer.prompt_messages, prompt_layers: analyzer.prompt_layer_summary, output: analysis[:output], error: analysis[:error], status: "failed")
-        )
-      end
+      step.update!(
+        summary: "#{initial_summary}\nModel #{analyzer.client.model} đã phân tích xong yêu cầu#{duration ? " (mất #{duration})" : ""}.",
+        data: result[:metrics].merge(prompt_messages: analyzer.prompt_messages, prompt_layers: analyzer.prompt_layer_summary, output: analysis[:output], raw: result[:raw], status: "completed")
+      )
       analysis
     end
 
@@ -258,12 +258,15 @@ module AgentLoop
           decision_summary(decision, iteration),
           decision.merge(iteration: iteration)
         )
+        persist_shared_state(run, state, current_action: decision[:action])
         check_cancelled!(run)
 
         return decision if decision[:action] == "final_answer"
 
-        execute_action(run, intent, state, decision[:action], message, context)
+        outcome = execute_action(run, intent, state, decision[:action], message, context)
+        persist_shared_state(run, state, current_action: decision[:action])
         check_cancelled!(run)
+        return { action: "ask_clarification", reason: "Bản nháp cần thêm dữ kiện trước khi có thể tạo chính xác." } if outcome == :clarification_needed
         return decision if decision[:action] == "ask_clarification"
       end
 
@@ -392,7 +395,8 @@ module AgentLoop
           "Mình đang gọi model để soạn bản nháp từ nguồn và ngữ cảnh hiện có.",
           { tools: [], documents_count: state[:documents].to_a.count, provider: local_model_client.provider, model: local_model_client.model, status: "running", request_started_at: Time.now.utc.iso8601(6) }
         )
-        artifact_result = build_artifact(intent: intent, documents: state[:documents], message: message, context: context)
+        begin
+        artifact_result = build_artifact(intent: intent, documents: state[:documents], message: message, context: context, shared_state: shared_state_for(state, current_action: action))
         artifact = artifact_result[:artifact].merge(content: artifact_result[:output])
         state[:artifact] = artifact
         state[:artifact_tool] = artifact_result[:tool]
@@ -424,6 +428,33 @@ module AgentLoop
             status: "completed"
           }
         )
+      rescue ModelArtifactBuilder::NeedsClarification => e
+        step.update!(
+          summary: "Model chưa thể soạn bản nháp chính xác vì thiếu dữ kiện: #{e.message}",
+          data: (step.data || {}).merge(status: "blocked", clarification_reason: e.message)
+        )
+        clarification = ClarificationBuilder.new(
+          message: "#{message}\n\nDữ kiện model cần bổ sung: #{e.message}",
+          context: context.merge(shared_state: shared_state_for(state, current_action: "ask_clarification")),
+          client: local_model_client
+        ).call
+        state[:clarification] = clarification
+        append_working_note(
+          state,
+          action: "ask_clarification",
+          summary: "Model cần làm rõ trước khi tạo bản nháp: #{e.message}",
+          reason: e.message,
+          question_count: Array(clarification[:questions]).count
+        )
+        create_step(
+          run,
+          "clarification",
+          "Hỏi làm rõ trước khi soạn",
+          "Chưa đủ dữ kiện để tạo output chính xác. Mình đã chuẩn bị câu hỏi bổ sung cho bạn.",
+          clarification.merge(status: "completed", blocker: e.message)
+        )
+        :clarification_needed
+        end
       when "verify_artifact"
         step = create_step(
           run,
@@ -433,7 +464,7 @@ module AgentLoop
           { provider: local_model_client.provider, model: local_model_client.model, status: "running", request_started_at: Time.now.utc.iso8601(6) }
         )
         latest = latest_artifact_entry(state)
-        verification = verify_artifact(artifact: latest&.dig(:artifact) || state[:artifact], message: message, documents: state[:documents])
+        verification = verify_artifact(artifact: latest&.dig(:artifact) || state[:artifact], message: message, documents: state[:documents], shared_state: shared_state_for(state, current_action: action))
         update_latest_artifact(state, status: verification[:status], checks: verification[:checks])
         append_working_note(
           state,
@@ -459,7 +490,8 @@ module AgentLoop
           intent: intent,
           documents: state[:documents],
           checks: latest&.dig(:checks) || [],
-          context: context
+          context: context,
+          shared_state: shared_state_for(state, current_action: action)
         )
         revised_artifact = revision[:artifact].merge(content: revision[:output])
         state[:artifact] = revised_artifact
@@ -490,7 +522,7 @@ module AgentLoop
           "Mình đang chuẩn bị câu hỏi làm rõ ngắn gọn.",
           { status: "running", request_started_at: Time.now.utc.iso8601(6) }
         )
-        clarification = ClarificationBuilder.new(message: message, context: context, client: local_model_client).call
+        clarification = ClarificationBuilder.new(message: message, context: context.merge(shared_state: shared_state_for(state, current_action: action)), client: local_model_client).call
         state[:clarification] = clarification
         question_count = Array(clarification[:questions]).count
         append_working_note(
@@ -723,7 +755,8 @@ module AgentLoop
         web_pages: state[:web_pages] || [],
         artifact: state[:artifact],
         artifacts: state[:artifacts] || [],
-        working_notes: state[:working_notes] || []
+        working_notes: state[:working_notes] || [],
+        shared_state: shared_state_for(state, current_action: "final_answer")
       }
     end
 
@@ -815,34 +848,37 @@ module AgentLoop
       @model.present? ? LocalModelClient.new(model: @model) : LocalModelClient.new
     end
 
-    def build_artifact(intent:, documents:, message:, context:)
+    def build_artifact(intent:, documents:, message:, context:, shared_state:)
       with_artifact_timeout do
         ModelArtifactBuilder.new(
           intent: intent,
           documents: documents,
           message: message,
           context: context,
+          shared_state: shared_state,
           client: local_model_client
         ).call_with_metrics
       end
     end
 
-    def verify_artifact(artifact:, message:, documents:)
+    def verify_artifact(artifact:, message:, documents:, shared_state:)
       ModelArtifactVerifier.new(
         artifact: artifact,
         message: message,
         documents: documents,
+        shared_state: shared_state,
         client: local_model_client
       ).call_with_metrics
     end
 
-    def build_artifact_revision(artifact:, message:, intent:, documents:, checks:, context:)
+    def build_artifact_revision(artifact:, message:, intent:, documents:, checks:, context:, shared_state:)
       with_artifact_timeout do
         ModelArtifactBuilder.new(
           intent: intent,
           documents: documents,
           message: message,
           context: context,
+          shared_state: shared_state,
           client: local_model_client,
           revision_notes: {
             current_draft: artifact&.dig(:content),
@@ -874,6 +910,49 @@ module AgentLoop
       }.merge(metadata.compact)
       state[:working_notes] << note
       state[:working_notes] = state[:working_notes].last(12)
+    end
+
+    def shared_state_for(state, current_action:)
+      {
+        objective: state[:objective],
+        request: state[:request],
+        plan: state[:plan],
+        current_action: current_action,
+        completed_actions: Array(state[:working_notes]).map { |note| note[:action] },
+        working_notes: Array(state[:working_notes]),
+        evidence: {
+          documents: Array(state[:documents]).map { |document| document.slice(:title, :source, :url, :evaluation) },
+          web_results: Array(state[:web_results]).map { |result| result.slice(:title, :url, :evaluation) },
+          web_pages: Array(state[:web_pages]).map { |page| page.slice(:title, :url, :evaluation) }
+        },
+        artifact: state[:artifact]&.slice(:title, :content),
+        clarification: state[:clarification]
+      }.compact
+    end
+
+    def persist_shared_state(run, state, current_action:)
+      snapshot = shared_state_for(state, current_action: current_action)
+      run.update!(shared_state: snapshot)
+      @conversation.update!(shared_context: conversation_context_for(snapshot))
+    end
+
+    # Memory dài hạn của cả conversation. Đây là trạng thái do agent cập nhật,
+    # tách biệt hoàn toàn với `instructions` do người dùng tự đặt.
+    def persist_conversation_context(state, current_action:)
+      state_snapshot = shared_state_for(state, current_action: current_action)
+      @conversation.update!(shared_context: conversation_context_for(state_snapshot))
+    end
+
+    def conversation_context_for(state_snapshot)
+      {
+        objective: state_snapshot[:objective],
+        active_request: state_snapshot[:request],
+        current_action: state_snapshot[:current_action],
+        plan: state_snapshot[:plan],
+        completed_actions: state_snapshot[:completed_actions],
+        evidence: state_snapshot[:evidence],
+        updated_at: Time.now.utc.iso8601(6)
+      }.compact
     end
 
     def effective_content(context)

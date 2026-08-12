@@ -480,6 +480,44 @@ body {
   padding: 2px 8px 8px;
 }
 
+.conversation-context-section .output-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.output-panel-context-summary {
+  display: grid;
+  gap: 3px;
+  color: #475569;
+  font-size: 12px;
+}
+
+.output-panel-context-summary strong {
+  color: #334155;
+  font-weight: 600;
+}
+
+.output-panel-context-details {
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.output-panel-context-details summary {
+  color: #2563a8;
+  cursor: pointer;
+}
+
+.output-panel-context-details p {
+  margin: 6px 0 0;
+}
+
+.output-panel-context-note {
+  font-style: italic;
+}
+
 .library-preview-panel {
   width: min(46vw, 620px);
   min-width: 420px;

@@ -10,13 +10,14 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_10_100100) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_12_113000) do
   create_table "agent_conversations", force: :cascade do |t|
     t.integer "agent_project_id"
     t.datetime "created_at", null: false
     t.string "customer_name"
     t.string "industry", default: "software", null: false
     t.text "instructions"
+    t.json "shared_context", default: {}, null: false
     t.string "title", null: false
     t.datetime "updated_at", null: false
     t.index ["agent_project_id"], name: "index_agent_conversations_on_agent_project_id"
@@ -62,6 +63,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_10_100100) do
     t.integer "assistant_message_id"
     t.datetime "created_at", null: false
     t.text "intent"
+    t.json "shared_state", default: {}, null: false
     t.string "status", default: "running", null: false
     t.datetime "updated_at", null: false
     t.integer "user_message_id", null: false

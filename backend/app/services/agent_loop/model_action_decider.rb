@@ -2,9 +2,8 @@ require "json"
 
 module AgentLoop
   # Plan đã được tạo ở bước phân tích là flow chính của lượt chạy. Mỗi vòng chỉ
-  # lấy bước chưa hoàn thành tiếp theo trong plan; model chỉ là fallback cho plan
-  # cũ/không hợp lệ. Các guard bên dưới vẫn có quyền can thiệp khi trạng thái
-  # thực tế yêu cầu làm rõ, kiểm tra hoặc sửa artifact.
+  # lấy bước chưa hoàn thành tiếp theo trong plan. Các guard bên dưới vẫn có
+  # quyền can thiệp khi trạng thái thực tế yêu cầu làm rõ, kiểm tra hoặc sửa artifact.
   class ModelActionDecider
     ACTIONS = {
       "search_documents" => "Tìm tài liệu / dẫn chứng nội bộ liên quan tới yêu cầu.",
@@ -283,22 +282,6 @@ module AgentLoop
       )
     end
 
-    def fallback(error)
-      rule = ActionDecider.new(
-        intent: @intent,
-        message: @message,
-        state: @state,
-        iteration: @iteration,
-        max_iterations: @max_iterations,
-        context: @context
-      ).call
-      build(
-        rule[:action],
-        "Model không phản hồi được (#{error.message}); dùng luật dự phòng: #{rule[:reason]}",
-        source: "fallback"
-      )
-    end
-
     def build(action, reason, source:, metrics: nil, raw: nil)
       normalized = ACTIONS.key?(action) ? action : "final_answer"
       {
@@ -380,7 +363,7 @@ module AgentLoop
     end
 
     def markdown(action, reason, source)
-      label = { "plan" => "theo plan", "model" => "model chọn", "fallback" => "luật dự phòng", "guard" => "giới hạn an toàn" }.fetch(source, source)
+      label = { "plan" => "theo plan", "model" => "model chọn", "guard" => "giới hạn an toàn" }.fetch(source, source)
       "### Quyết định vòng #{@iteration} (#{label})\n- Action: `#{action}`\n- Lý do: #{reason}"
     end
 
@@ -451,6 +434,8 @@ module AgentLoop
         project = @context[:project]
         lines << "- project: #{project[:title]} | #{project[:shared_context].to_s.truncate(500)}"
       end
+      conversation_context = @context.dig(:conversation, :shared_context) || @context.dig("conversation", "shared_context") || {}
+      lines << "- conversation shared state: #{JSON.generate(conversation_context)}" if conversation_context.present?
       return "Không có." if recent_messages.empty? && lines.empty?
 
       message_lines = recent_messages.map do |message|

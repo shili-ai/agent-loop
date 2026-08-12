@@ -13,7 +13,8 @@ module AgentLoop
           title: @conversation.title,
           industry: @conversation.industry,
           customer_name: @conversation.customer_name,
-          instructions: @conversation.instructions
+          instructions: @conversation.instructions,
+          shared_context: @conversation.shared_context
         },
         project: project_context,
         skills: skills,

@@ -4,11 +4,13 @@ module AgentLoop
   # Tạo artifact bằng model từ chứng cứ thật. Lớp này chỉ chuẩn hoá output và
   # xuất CSV khi model thực sự trả về bảng Markdown; không có template nội dung.
   class ModelArtifactBuilder
-    def initialize(intent:, documents:, message:, context:, client: LocalModelClient.new, revision_notes: [])
+    class NeedsClarification < StandardError; end
+    def initialize(intent:, documents:, message:, context:, shared_state:, client: LocalModelClient.new, revision_notes: [])
       @intent = intent
       @documents = Array(documents)
       @message = message.to_s
       @context = context
+      @shared_state = shared_state
       @client = client
       @revision_notes = revision_notes
     end
@@ -51,14 +53,22 @@ module AgentLoop
       {
         request: @message,
         intent: @intent,
-        evidence: @documents.map { |doc| doc.slice(:title, :snippet, :source, :url, :evaluation) },
-        revision_notes: @revision_notes,
-        conversation: @context[:recent_messages]
+        shared_state: @shared_state,
+        evidence: @documents.map { |doc| evidence_document(doc) },
+        revision_notes: @revision_notes
       }
     end
 
+    def evidence_document(document)
+      document.slice(:title, :snippet, :source, :url, :evaluation).merge(
+        content: document[:content].to_s.first(12_000)
+      )
+    end
+
     def artifact(content)
-      raise content.delete_prefix("NEEDS_CLARIFICATION:").strip.presence || "Model yêu cầu làm rõ" if content.start_with?("NEEDS_CLARIFICATION:")
+      if content.start_with?("NEEDS_CLARIFICATION:")
+        raise NeedsClarification, content.delete_prefix("NEEDS_CLARIFICATION:").strip.presence || "Model yêu cầu làm rõ"
+      end
 
       {
         title: content.lines.find { |line| line.start_with?("# ") }.to_s.delete_prefix("# ").strip.presence || "Bản nháp từ model",

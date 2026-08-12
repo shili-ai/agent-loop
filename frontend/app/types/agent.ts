@@ -20,6 +20,7 @@ export type AgentRun = {
   id: number;
   status: string;
   intent: string | null;
+  shared_state?: Record<string, unknown>;
   user_message_id: number;
   assistant_message_id: number | null;
   steps: AgentStep[];
@@ -118,6 +119,8 @@ export type AgentConversation = {
   title: string;
   industry: string;
   customer_name: string | null;
+  instructions?: string | null;
+  shared_context?: Record<string, unknown>;
   project?: AgentProject | null;
   skills?: AgentSkill[];
   documents?: AgentDocument[];

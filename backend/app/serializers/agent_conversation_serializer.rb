@@ -11,6 +11,7 @@ class AgentConversationSerializer
       industry: @conversation.industry,
       customer_name: @conversation.customer_name,
       instructions: @conversation.instructions,
+      shared_context: shared_context,
       project: project,
       skills: skills,
       documents: documents,
@@ -63,6 +64,7 @@ class AgentConversationSerializer
         id: run.id,
         status: run.status,
         intent: run.intent,
+        shared_state: run.shared_state,
         user_message_id: run.user_message_id,
         assistant_message_id: run.assistant_message_id,
         steps: run.agent_steps.map do |step|
@@ -79,5 +81,11 @@ class AgentConversationSerializer
         end
       }
     end
+  end
+
+  def shared_context
+    return @conversation.shared_context if @conversation.shared_context.present?
+
+    @conversation.agent_runs.order(created_at: :desc).find { |run| run.shared_state.present? }&.shared_state || {}
   end
 end

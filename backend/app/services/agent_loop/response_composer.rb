@@ -11,8 +11,8 @@ module AgentLoop
     def call
       return no_reliable_web_answer if no_reliable_web_evidence?
       artifact = visible_artifact
-      return structured_artifact_answer(artifact) if structured_artifact?(artifact)
       return model_answer_with_web_sources if @model_answer.present?
+      return structured_artifact_answer(artifact) if structured_artifact?(artifact)
       return clarification_answer if @clarification.present?
 
       return web_search_answer if web_results.present? && !artifact

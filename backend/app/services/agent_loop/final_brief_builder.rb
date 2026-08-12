@@ -20,6 +20,7 @@ module AgentLoop
         web_pages: web_pages,
         draft: draft,
         artifacts: artifacts,
+        shared_state: @tool_result[:shared_state],
         output_contract: output_contract,
         missing_context: missing_context
       }

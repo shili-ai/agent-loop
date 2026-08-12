@@ -47,7 +47,14 @@ module AgentLoop
     def messages
       [
         { role: "system", content: system_prompt },
-        { role: "user", content: PromptTemplate.render("clarification_user", message: @message) }
+        {
+          role: "user",
+          content: [
+            PromptTemplate.render("clarification_user", message: @message),
+            "Shared state của lượt chạy (dùng để không hỏi lại mục tiêu hoặc dữ kiện đã có):",
+            JSON.pretty_generate(@context[:shared_state] || {})
+          ].join("\n\n")
+        }
       ]
     end
 
@@ -109,87 +116,12 @@ module AgentLoop
     end
 
     def markdown_output(questions, source:)
-      label = source == "model" ? "AI đề xuất" : "Fallback theo nội dung yêu cầu"
-      lines = [ "### Cần làm rõ thêm", "#{label} #{questions.length} câu hỏi và các câu trả lời gợi ý:", "" ]
+      lines = [ "### Cần làm rõ thêm", "AI đề xuất #{questions.length} câu hỏi và các câu trả lời gợi ý:", "" ]
       questions.each do |question|
         lines << "- **#{question[:question]}**"
         question[:options].each { |option| lines << "  - #{option}" }
       end
       lines.join("\n")
-    end
-
-    def fallback_questions
-      return estimate_questions if clarification_policy.category == "estimate"
-      return risky_change_questions if clarification_policy.category == "risky_change"
-      return ambiguous_change_questions if clarification_policy.category == "ambiguous_change"
-
-      [
-        {
-          id: "desired_output",
-          question: "Bạn muốn agent ưu tiên dạng đầu ra nào cho yêu cầu này?",
-          type: "multiple",
-          options: inferred_output_options
-        }
-      ]
-    end
-
-    def estimate_questions
-      [
-        {
-          id: "estimate_scope",
-          question: "Bạn muốn estimate những hạng mục/chức năng nào?",
-          type: "multiple",
-          options: [ "Chỉ tích hợp cổng thanh toán", "Cổng thanh toán và webhook", "Bao gồm UI, backend và kiểm thử", "Gửi scope chi tiết riêng" ]
-        },
-        {
-          id: "estimate_format",
-          question: "Bạn muốn nhận estimate theo định dạng nào?",
-          type: "single",
-          options: [ "Bảng Markdown", "File CSV", "Cả Markdown và CSV", "Proposal có bảng estimate" ]
-        },
-        {
-          id: "estimate_unit",
-          question: "Đơn vị ước lượng bạn cần là gì?",
-          type: "multiple",
-          options: [ "Man-day", "Giờ công", "Chi phí USD", "Giờ công và chi phí USD" ]
-        }
-      ]
-    end
-
-    def risky_change_questions
-      [
-        {
-          id: "change_scope",
-          question: "Bạn muốn áp dụng thay đổi ở mức nào?",
-          type: "choice",
-          options: [ "Chỉ UI/wording", "Backend behavior nhưng giữ fallback", "Xoá/đổi hẳn code liên quan", "Cả frontend, backend và docs" ]
-        }
-      ]
-    end
-
-    def ambiguous_change_questions
-      [
-        {
-          id: "target_scope",
-          question: "Bạn muốn mình tác động vào phần nào trước?",
-          type: "choice",
-          options: [ "Frontend/UI", "Backend/agent loop", "Prompt/skill", "Cả luồng end-to-end" ]
-        }
-      ]
-    end
-
-    def inferred_output_options
-      text = @message.downcase
-      options = []
-      options << "Email follow-up gửi khách" if text.include?("email") || text.include?("follow")
-      options << "Proposal ngắn có bullet" if text.include?("proposal") || text.include?("đề xuất")
-      options << "Battlecard so sánh đối thủ" if text.include?("battlecard") || text.include?("đối thủ")
-      options << "Câu trả lời RFP/RFI" if text.include?("rfp") || text.include?("rfi")
-      (options + [ "Tóm tắt tư vấn presales", "Checklist hành động tiếp theo", "Bản nháp có thể chỉnh sửa" ]).uniq.first(MAX_OPTIONS)
-    end
-
-    def clarification_policy
-      @clarification_policy ||= ClarificationPolicy.new(message: @message, context: @context)
     end
   end
 end

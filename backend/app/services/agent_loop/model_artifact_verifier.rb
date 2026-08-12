@@ -3,10 +3,11 @@ require "json"
 module AgentLoop
   # Review bằng model độc lập với writer; không tự gắn nhãn passed theo rule/template.
   class ModelArtifactVerifier
-    def initialize(artifact:, message:, documents:, client: LocalModelClient.new)
+    def initialize(artifact:, message:, documents:, shared_state:, client: LocalModelClient.new)
       @artifact = artifact || {}
       @message = message.to_s
       @documents = Array(documents)
+      @shared_state = shared_state
       @client = client
     end
 
@@ -39,7 +40,17 @@ module AgentLoop
     def messages
       [
         { role: "system", content: "Review deliverable thật chặt. Chỉ xác nhận claim được chứng minh bởi evidence. Trả JSON {status: verified|needs_revision, summary: string, checks: [{label, passed, message}]}. Không bịa check hay nguồn." },
-        { role: "user", content: JSON.pretty_generate(request: @message, artifact: @artifact.slice(:title, :content), evidence: @documents.map { |doc| doc.slice(:title, :snippet, :source, :url) }) }
+        {
+          role: "user",
+          content: JSON.pretty_generate(
+            request: @message,
+            shared_state: @shared_state,
+            artifact: @artifact.slice(:title, :content),
+            evidence: @documents.map do |doc|
+              doc.slice(:title, :snippet, :source, :url).merge(content: doc[:content].to_s.first(12_000))
+            end
+          )
+        }
       ]
     end
 
