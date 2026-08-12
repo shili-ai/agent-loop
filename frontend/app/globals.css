@@ -1037,6 +1037,22 @@ body {
   font-style: italic;
 }
 
+.reason-runtime {
+  width: fit-content;
+  margin-top: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #eef6ff;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.reason-runtime.stale {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
 .reason-text {
   color: #6b7280;
   font-size: 13px;
@@ -3706,23 +3722,65 @@ body {
 
 /* Node bung chi tiết ngay trong flow: rộng hơn, nội dung cuộn được */
 .flow-node-expanded {
-  width: 300px;
+  width: 560px;
   border-color: #2563eb;
   box-shadow: 0 6px 20px rgba(37, 99, 235, 0.22);
 }
 
 .flow-node-body {
-  margin-top: 6px;
-  padding-top: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
   border-top: 1px dashed #e2e8f0;
   max-height: 220px;
   overflow: auto;
+}
+
+.flow-node-body-title {
+  margin: 8px 0 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.flow-node-body-title:first-child {
+  margin-top: 0;
 }
 
 .flow-node-summary {
   color: #334155;
   line-height: 1.5;
   white-space: pre-wrap;
+}
+
+.flow-node-debug {
+  margin: 0;
+  padding: 8px;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 10px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.step-read-status {
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.step-result-url {
+  display: inline-block;
+  overflow-wrap: anywhere;
+}
+
+a.step-result-url:hover { text-decoration: underline; }
+
+.step-result-redirect-url {
+  margin-top: 3px;
+  font-size: 11px;
 }
 
 .flow-node-more {
@@ -3794,20 +3852,32 @@ body {
 
 .flow-node-details {
   margin: 0;
-  padding-left: 14px;
   color: #475569;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 5px;
 }
 
-.flow-node-details li {
-  list-style: disc;
+.flow-node-detail {
+  position: relative;
+  padding-left: 12px;
+  line-height: 1.45;
   word-break: break-word;
+}
+
+.flow-node-detail::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: #64748b;
 }
 
 .flow-node-retrieval { border-left-color: #0ea5e9; }
 .flow-node-lane { border-left-color: #38bdf8; background: #f8fbff; }
+.flow-node-operation { border-left-color: #0ea5e9; background: #f0f9ff; }
+.flow-node-result { border-left-color: #22c55e; background: #f0fdf4; }
+.flow-node-crawler { border-left-color: #f59e0b; background: #fffbeb; }
+.flow-node-evaluation-detail { border-left-color: #10b981; background: #ecfdf5; }
 .flow-node-plan { border-left-color: #a855f7; }
 .flow-node-reasoning,
 .flow-node-decision { border-left-color: #f59e0b; }

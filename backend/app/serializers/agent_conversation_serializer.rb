@@ -72,7 +72,9 @@ class AgentConversationSerializer
             kind: step.kind,
             title: step.title,
             summary: step.summary,
-            data: step.data
+            data: step.data,
+            created_at: step.created_at,
+            updated_at: step.updated_at
           }
         end
       }

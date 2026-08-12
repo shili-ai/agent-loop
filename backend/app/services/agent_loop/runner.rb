@@ -1,12 +1,19 @@
 require "time"
 require "securerandom"
+require "timeout"
 
 module AgentLoop
   class Runner
     MAX_ITERATIONS = 20
+    ARTIFACT_BUILD_TIMEOUT_SECONDS = 10
     class CancelledRunError < StandardError; end
+    class ArtifactBuildTimeout < StandardError; end
 
     def self.enqueue(conversation:, content:, model: nil)
+      # Runner thực thi trong Thread riêng. Preload các class artifact tại request
+      # thread để Zeitwerk không phải autoload chúng giữa lúc worker đang chạy.
+      [ ArtifactBuilder, ArtifactVerifier, ArtifactReviser ].each(&:name)
+
       user_message = conversation.agent_messages.create!(role: "user", content: content)
       run = conversation.agent_runs.create!(user_message: user_message, status: "running")
 
@@ -134,7 +141,7 @@ module AgentLoop
     rescue CancelledRunError
       run&.update!(status: "cancelled") if run&.status != "cancelled"
       run
-    rescue StandardError => e
+    rescue StandardError, LoadError => e
       run&.update!(status: "failed")
       create_step(
         run,
@@ -191,7 +198,7 @@ module AgentLoop
 
       title = ConversationTitler.new(conversation: @conversation, latest_answer: assistant_message.content, client: local_model_client).call
       @conversation.update!(title: title) if title.present?
-    rescue StandardError => e
+    rescue StandardError, LoadError => e
       Rails.logger.warn("[AgentLoop::Runner] title generation failed: #{e.class}: #{e.message}")
     end
 
@@ -232,6 +239,13 @@ module AgentLoop
       case action
       when "search_documents"
         keywords = retrieval_keywords(state, message)
+        step = create_step(
+          run,
+          "document_search",
+          "Tìm tài liệu",
+          "Mình đang tra kho tài liệu nội bộ với từ khoá #{format_keywords(keywords)}.",
+          { tools: [ "document_search" ], query: message, keywords: keywords, status: "running", request_started_at: Time.now.utc.iso8601(6) }
+        )
         documents = DocumentSearch.new(query: message, conversation: @conversation).call
         state[:documents] = documents
         state[:search_attempts] = state[:search_attempts].to_i + 1
@@ -249,16 +263,20 @@ module AgentLoop
           keywords: keywords,
           titles: documents.map { |document| document[:title] }
         )
-        create_step(
-          run,
-          "document_search",
-          "Tìm tài liệu",
-          summary,
-          { tools: [ "document_search" ], query: message, keywords: keywords, documents: documents, output: DocumentSearchNoteBuilder.new(documents: documents).call }
+        step.update!(
+          summary: summary,
+          data: { tools: [ "document_search" ], query: message, keywords: keywords, documents: documents, output: DocumentSearchNoteBuilder.new(documents: documents).call, status: "completed" }
         )
         evaluate_search_results(run, state, message)
       when "web_search"
         keywords = retrieval_keywords(state, message)
+        step = create_step(
+          run,
+          "web_search",
+          "Tìm trên web",
+          "Mình đang tra cứu trên web với từ khoá #{format_keywords(keywords)}.",
+          { tools: [ "web_search" ], query: message, keywords: keywords, status: "running", request_started_at: Time.now.utc.iso8601(6) }
+        )
         searcher = WebSearch.new(query: message)
         results = searcher.call
         candidates = searcher.candidates
@@ -284,22 +302,27 @@ module AgentLoop
           titles: results.map { |result| result[:title] },
           candidate_titles: candidates.map { |candidate| candidate[:title] }
         )
-        create_step(
-          run,
-          "web_search",
-          "Tìm trên web",
-          summary,
-          {
+        step.update!(
+          summary: summary,
+          data: {
             tools: [ "web_search" ],
             query: message,
             keywords: keywords,
             web_raw_results: raw_results,
             web_results: results,
             web_candidates: candidates,
-            output: WebSearchNoteBuilder.new(results: results, candidates: candidates, raw_results: raw_results).call
+            output: WebSearchNoteBuilder.new(results: results, candidates: candidates, raw_results: raw_results).call,
+            status: "completed"
           }
         )
         if results.any?
+          read_step = create_step(
+            run,
+            "web_read",
+            "Đọc trang web",
+            "Mình đang đọc nội dung chính của các trang web đạt chuẩn.",
+            { tools: [ "web_page_reader" ], results: results, status: "running", request_started_at: Time.now.utc.iso8601(6) }
+          )
           pages = WebPageReader.new(results: results).call
           readable_pages = pages.select { |page| page[:status] == "read" && page[:content].present? }
           state[:web_pages] = readable_pages
@@ -310,21 +333,26 @@ module AgentLoop
             evidence_count: readable_pages.count,
             titles: readable_pages.map { |page| page[:title] }
           )
-          create_step(
-            run,
-            "web_read",
-            "Đọc trang web",
-            readable_pages.any? ? "Mình đọc nội dung chính của #{readable_pages.count} trang đạt chuẩn để đưa vào brief cho model." : "Mình thử đọc trang đạt chuẩn nhưng chưa trích được nội dung HTML hữu ích.",
-            {
+          read_step.update!(
+            summary: readable_pages.any? ? "Mình đọc nội dung chính của #{readable_pages.count} trang đạt chuẩn để đưa vào brief cho model." : "Mình thử đọc trang đạt chuẩn nhưng chưa trích được nội dung HTML hữu ích.",
+            data: {
               tools: [ "web_page_reader" ],
               pages: pages,
-              output: WebPageReadNoteBuilder.new(pages: pages).call
+              output: WebPageReadNoteBuilder.new(pages: pages).call,
+              status: "completed"
             }
           )
         end
         evaluate_search_results(run, state, message)
       when "draft_artifact"
-        artifact_result = ArtifactBuilder.new(intent: intent, documents: state[:documents], message: message).call
+        step = create_step(
+          run,
+          "artifact",
+          "Soạn bản nháp",
+          "Mình đang soạn bản nháp dựa trên nguồn và ngữ cảnh hiện có.",
+          { tools: [], documents_count: state[:documents].to_a.count, status: "running", request_started_at: Time.now.utc.iso8601(6) }
+        )
+        artifact_result = build_artifact(intent: intent, documents: state[:documents], message: message)
         artifact = artifact_result[:artifact].merge(content: artifact_result[:output])
         state[:artifact] = artifact
         state[:artifact_tool] = artifact_result[:tool]
@@ -342,19 +370,24 @@ module AgentLoop
           section_count: sections.count,
           evidence_count: evidence
         )
-        create_step(
-          run,
-          "artifact",
-          "Soạn bản nháp",
-          "Dựa trên #{evidence} tài liệu tìm được, mình phác thảo bản nháp “#{artifact[:title]}”#{sections.any? ? " bằng #{sections.count} phần nhỏ rồi ghép thành file cuối" : (bullets.any? ? " gồm #{bullets.count} ý chính" : "")}.",
-          {
+        step.update!(
+          summary: "Dựa trên #{evidence} tài liệu tìm được, mình phác thảo bản nháp “#{artifact[:title]}”#{sections.any? ? " bằng #{sections.count} phần nhỏ rồi ghép thành file cuối" : (bullets.any? ? " gồm #{bullets.count} ý chính" : "")}.",
+          data: {
             tools: [ artifact_result[:tool] ],
             artifact: artifact,
             artifact_entry: artifact_entry,
-            output: artifact_result[:output]
+            output: artifact_result[:output],
+            status: "completed"
           }
         )
       when "verify_artifact"
+        step = create_step(
+          run,
+          "verification",
+          "Kiểm tra bản nháp",
+          "Mình đang kiểm tra bản nháp trước khi tổng hợp câu trả lời.",
+          { status: "running", request_started_at: Time.now.utc.iso8601(6) }
+        )
         latest = latest_artifact_entry(state)
         verification = ArtifactVerifier.new(artifact: latest&.dig(:artifact) || state[:artifact], message: message).call
         update_latest_artifact(state, status: verification[:status], checks: verification[:checks])
@@ -366,14 +399,15 @@ module AgentLoop
           status: verification[:status],
           failed_checks: verification[:checks].select { |check| !check[:passed] }.map { |check| check[:label] }
         )
-        create_step(
-          run,
-          "verification",
-          "Kiểm tra bản nháp",
-          verification[:summary],
-          verification
-        )
+        step.update!(summary: verification[:summary], data: verification.merge(status: "completed"))
       when "revise_artifact"
+        step = create_step(
+          run,
+          "artifact",
+          "Sửa bản nháp",
+          "Mình đang sửa bản nháp theo kết quả kiểm tra.",
+          { status: "running", request_started_at: Time.now.utc.iso8601(6) }
+        )
         latest = latest_artifact_entry(state)
         revision = ArtifactReviser.new(
           artifact: latest&.dig(:artifact) || state[:artifact],
@@ -393,19 +427,24 @@ module AgentLoop
           artifact_id: artifact_entry[:id],
           artifact_title: revised_artifact[:title]
         )
-        create_step(
-          run,
-          "artifact",
-          "Sửa bản nháp",
-          revision[:summary],
-          {
+        step.update!(
+          summary: revision[:summary],
+          data: {
             tools: [ revision[:tool] ],
             artifact: revised_artifact,
             artifact_entry: artifact_entry,
-            output: revision[:output]
+            output: revision[:output],
+            status: "completed"
           }
         )
       when "ask_clarification"
+        step = create_step(
+          run,
+          "clarification",
+          "Hỏi làm rõ",
+          "Mình đang chuẩn bị câu hỏi làm rõ ngắn gọn.",
+          { status: "running", request_started_at: Time.now.utc.iso8601(6) }
+        )
         clarification = ClarificationBuilder.new(message: message, context: context, client: local_model_client).call
         state[:clarification] = clarification
         question_count = Array(clarification[:questions]).count
@@ -416,14 +455,19 @@ module AgentLoop
           question_count: question_count,
           source: clarification[:source]
         )
-        create_step(
-          run,
-          "clarification",
-          "Hỏi làm rõ",
-          "Yêu cầu còn thiếu thông tin để trả lời chính xác, nên mình chuẩn bị #{question_count} câu hỏi để làm rõ trước khi tiếp tục.",
-          clarification
+        step.update!(
+          summary: "Yêu cầu còn thiếu thông tin để trả lời chính xác, nên mình chuẩn bị #{question_count} câu hỏi để làm rõ trước khi tiếp tục.",
+          data: clarification.merge(status: "completed")
         )
       end
+    rescue StandardError, LoadError => e
+      if defined?(step) && step
+        step.update!(
+          summary: "Action #{humanize_action(action)} bị lỗi trước khi hoàn tất.",
+          data: (step.data || {}).merge(status: "failed", error: e.message)
+        )
+      end
+      raise
     end
 
     def run_broad_retrieval_after_plan(run, state, plan, message, context)
@@ -719,6 +763,14 @@ module AgentLoop
 
     def local_model_client
       @model.present? ? LocalModelClient.new(model: @model) : LocalModelClient.new
+    end
+
+    def build_artifact(intent:, documents:, message:)
+      Timeout.timeout(ARTIFACT_BUILD_TIMEOUT_SECONDS, ArtifactBuildTimeout) do
+        ArtifactBuilder.new(intent: intent, documents: documents, message: message).call
+      end
+    rescue ArtifactBuildTimeout
+      raise ArtifactBuildTimeout, "Tạo file đã vượt quá #{ARTIFACT_BUILD_TIMEOUT_SECONDS} giây. Agent đã dừng bước này thay vì chờ vô hạn."
     end
 
     def append_working_note(state, action:, summary:, **metadata)

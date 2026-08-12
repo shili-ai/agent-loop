@@ -12,6 +12,8 @@ export type AgentStep = {
   title: string;
   summary: string;
   data: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type AgentRun = {

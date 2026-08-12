@@ -80,6 +80,36 @@ module AgentLoop
       -pornhub
       -onlyfans
     ].freeze
+    QUERY_STOPWORDS = %w[
+      a
+      an
+      and
+      are
+      by
+      for
+      from
+      in
+      is
+      of
+      on
+      or
+      the
+      to
+      with
+      cac
+      cho
+      cua
+      giup
+      hien
+      minh
+      nay
+      nhung
+      tren
+      thong
+      tin
+      toi
+      ve
+    ].freeze
 
     def initialize(query:, limit: DEFAULT_LIMIT, endpoint: ENV.fetch("WEB_SEARCH_ENDPOINT", DEFAULT_ENDPOINT))
       @query = query.to_s
@@ -99,8 +129,9 @@ module AgentLoop
 
       direct_results = direct_domain_results
       instant_results = instant_answer_results
-      rss_results = rss_results()
-      ranked_results(direct_results + instant_results + rss_results).first(@limit)
+      html_results = duckduckgo_html_results
+      rss_results = html_results.any? ? [] : rss_results()
+      ranked_results(direct_results + instant_results + html_results + rss_results).first(@limit)
     rescue StandardError => e
       [ { title: "Web search không khả dụng", url: nil, snippet: utf8(e.message), source: "error" } ]
     end
@@ -155,6 +186,26 @@ module AgentLoop
       fetch_rss_results(broad_search_query)
     end
 
+    def duckduckgo_html_results
+      results = fetch_duckduckgo_html_results(safe_search_query)
+      return results if results.any?
+      return results if broad_search_query == safe_search_query
+
+      fetch_duckduckgo_html_results(broad_search_query)
+    end
+
+    def fetch_duckduckgo_html_results(query)
+      uri = URI("https://html.duckduckgo.com/html/")
+      uri.query = URI.encode_www_form(q: query)
+      response = fetch(uri)
+      return [] unless response.is_a?(Net::HTTPSuccess)
+
+      parse_duckduckgo_html(utf8(response.body))
+    rescue StandardError => e
+      record_candidate("DuckDuckGo HTML", uri&.to_s, e.message, "DuckDuckGo HTML không khả dụng")
+      []
+    end
+
     def fetch_rss_results(query)
       uri = URI("https://www.bing.com/search")
       uri.query = URI.encode_www_form(
@@ -173,7 +224,9 @@ module AgentLoop
     end
 
     def fetch(uri, redirect_limit = 3)
-      response = Net::HTTP.get_response(uri)
+      response = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https", open_timeout: 5, read_timeout: 8) do |http|
+        http.get(uri.request_uri, "User-Agent" => "agent-loop-web-search/1.0")
+      end
       response.define_singleton_method(:uri) { uri }
       return response unless response.is_a?(Net::HTTPRedirection) && redirect_limit.positive?
 
@@ -211,6 +264,39 @@ module AgentLoop
           source: "bing_rss"
         }
       end.compact
+        .uniq { |item| [ item[:title], item[:url] ] }
+        .sort_by { |item| result_rank(item) }
+        .first(@limit)
+    end
+
+    def parse_duckduckgo_html(html)
+      html
+        .split(/<a[^>]+class=["'][^"']*result__a[^"']*["']/i)
+        .drop(1)
+        .map do |chunk|
+          href = chunk[/href=["']([^"']+)["']/i, 1]
+          title = chunk[/>((?:(?!<\/a>).)*)<\/a>/mi, 1]
+          snippet = chunk[/class=["'][^"']*result__snippet[^"']*["'][^>]*>((?:(?!<\/a>).)*)<\/a>/mi, 1]
+          url = unwrap_duckduckgo_url(href)
+          clean_title = clean_html(title)
+          clean_snippet = clean_html(snippet)
+          next if ad_url?(url)
+
+          record_raw_result(clean_title, url, clean_snippet, "duckduckgo_html")
+          reason = rejection_reason(clean_title, url, clean_snippet)
+          if reason
+            record_candidate(clean_title, url, clean_snippet, reason)
+            next
+          end
+
+          {
+            title: clean_title,
+            url: url,
+            snippet: clean_snippet,
+            source: "duckduckgo_html"
+          }
+        end
+        .compact
         .uniq { |item| [ item[:title], item[:url] ] }
         .sort_by { |item| result_rank(item) }
         .first(@limit)
@@ -364,25 +450,45 @@ module AgentLoop
     end
 
     def relevant_result?(title, url, snippet)
-      tokens = @search_query.downcase.scan(/[\p{L}\p{N}]+/).select { |word| word.length >= 3 }
+      tokens = meaningful_query_tokens
       return true if tokens.empty?
 
-      text = "#{title} #{url} #{snippet}".downcase
-      return text.include?(tokens.first) if tokens.one?
-      return false unless text.include?(tokens.first)
-      return true if tokens[1..].any? { |token| text.include?(token) }
+      words = normalized_words("#{title} #{url} #{snippet}")
+      matched_count = tokens.count { |token| token_matched?(token, words) }
+      return matched_count.positive? if tokens.one?
+      return true if trusted_source?(url) && matched_count.positive?
 
-      matched_count = tokens.count { |token| text.include?(token) }
-      matched_count >= (tokens.length * 0.6).ceil
+      matched_count >= [ 2, (tokens.length * 0.5).ceil ].max
     end
 
     def candidate_like_query?(title, url, snippet)
-      query_terms = @search_query.downcase.scan(/[\p{L}\p{N}]+/).select { |word| word.length >= 4 }
+      query_terms = meaningful_query_tokens.select { |word| word.length >= 4 }
       return false if query_terms.empty?
 
-      words = "#{title} #{url} #{snippet}".downcase.scan(/[\p{L}\p{N}]+/).select { |word| word.length >= 4 }
+      words = normalized_words("#{title} #{url} #{snippet}").select { |word| word.length >= 4 }
       query_terms.any? do |term|
-        words.any? { |word| word.include?(term) || edit_distance(word, term) <= 2 }
+        token_matched?(term, words)
+      end
+    end
+
+    def meaningful_query_tokens
+      normalized_words(@search_query).select { |word| word.length >= 3 && !QUERY_STOPWORDS.include?(word) }
+    end
+
+    def normalized_words(value)
+      normalize_text(value)
+        .downcase
+        .unicode_normalize(:nfkd)
+        .gsub(/\p{Mn}/, "")
+        .gsub("đ", "d")
+        .scan(/[\p{L}\p{N}]+/)
+    end
+
+    def token_matched?(token, words)
+      words.any? do |word|
+        word == token ||
+          (token.length >= 4 && (word.include?(token) || token.include?(word))) ||
+          (token.length >= 5 && edit_distance(word, token) <= 2)
       end
     end
 
@@ -410,6 +516,22 @@ module AgentLoop
       URI(url.to_s).host.to_s.downcase.sub(/\Awww\./, "")
     rescue URI::InvalidURIError
       url.to_s.downcase
+    end
+
+    def unwrap_duckduckgo_url(value)
+      text = CGI.unescapeHTML(value.to_s)
+      text = "https:#{text}" if text.start_with?("//")
+      uri = URI(text)
+      params = URI.decode_www_form(uri.query.to_s).to_h
+      target = params["uddg"].presence || text
+      CGI.unescape(target)
+    rescue URI::InvalidURIError
+      text
+    end
+
+    def ad_url?(url)
+      text = url.to_s.downcase
+      text.include?("duckduckgo.com/y.js") || text.include?("bing.com/aclick")
     end
 
     def clean_html(value)

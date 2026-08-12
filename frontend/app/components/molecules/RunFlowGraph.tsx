@@ -15,7 +15,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { layoutFlowGraph, type FlowEdge, type FlowNode, type FlowNodeData } from "../../lib/runFlowGraph";
 
 type RunFlowGraphProps = {
@@ -39,7 +39,7 @@ function CardNode({ data }: NodeProps) {
     .filter(Boolean)
     .join(" ");
 
-  const shownDetails = expanded ? node.details : node.details.slice(0, 3);
+  const shownDetails = expanded ? node.details : node.details.slice(0, 4);
   const hiddenCount = node.details.length - shownDetails.length;
 
   return (
@@ -52,16 +52,29 @@ function CardNode({ data }: NodeProps) {
       </div>
       <div className="flow-node-title">{node.title}</div>
       {shownDetails.length ? (
-        <ul className="flow-node-details">
+        <div className="flow-node-details" role="list">
           {shownDetails.map((detail, index) => (
-            <li key={`${detail}-${index}`}>{detail}</li>
+            <div className="flow-node-detail" role="listitem" key={`${detail}-${index}`}>
+              {detail}
+            </div>
           ))}
-        </ul>
+        </div>
       ) : null}
       {expanded ? (
-        node.summary ? (
+        node.summary || node.debug ? (
           <div className="flow-node-body">
-            <div className="flow-node-summary">{node.summary}</div>
+            {node.summary ? (
+              <>
+                <div className="flow-node-body-title">Tóm tắt</div>
+                <div className="flow-node-summary">{node.summary}</div>
+              </>
+            ) : null}
+            {node.debug ? (
+              <>
+                <div className="flow-node-body-title">Debug data</div>
+                <pre className="flow-node-debug">{node.debug}</pre>
+              </>
+            ) : null}
           </div>
         ) : null
       ) : hiddenCount > 0 || node.summary ? (
@@ -73,29 +86,65 @@ function CardNode({ data }: NodeProps) {
 }
 
 const nodeTypes = { card: CardNode };
+const COLLAPSED_NODE_W = 240;
+const COLLAPSED_NODE_H = 92;
 
-// Khi sơ đồ mọc thêm node (đang chạy) thì fit lại TOÀN BỘ để luôn thấy hết,
-// thay vì khoá camera vào một bước.
-function FitOnGrow({ count }: { count: number }) {
-  const { fitView } = useReactFlow();
+// Lần đầu fit toàn bộ; khi có bước mới thì đưa camera về node mới nhất.
+// Khi bung chi tiết, fit lại để layout mở rộng không bị nằm ngoài khung nhìn.
+function FocusOnGraphChange({
+  count,
+  focusNode,
+  expandedNodeId,
+}: {
+  count: number;
+  focusNode?: Node;
+  expandedNodeId?: string | null;
+}) {
+  const { fitView, setCenter } = useReactFlow();
+  const previousCountRef = useRef<number | null>(null);
+  const previousExpandedNodeRef = useRef<string | null | undefined>(undefined);
+
   useEffect(() => {
-    const timer = setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 60);
+    const previousCount = previousCountRef.current;
+    const countIncreased = previousCount !== null && count > previousCount;
+    const initialRender = previousCount === null;
+    const selectedChanged = previousExpandedNodeRef.current !== expandedNodeId;
+
+    previousCountRef.current = count;
+    previousExpandedNodeRef.current = expandedNodeId;
+
+    const timer = setTimeout(() => {
+      if (countIncreased && focusNode) {
+        setCenter(focusNode.position.x + COLLAPSED_NODE_W / 2, focusNode.position.y + COLLAPSED_NODE_H / 2, {
+          duration: 450,
+          zoom: 0.95,
+        });
+        return;
+      }
+
+      if (initialRender || selectedChanged) {
+        fitView({ padding: 0.2, duration: 400 });
+      }
+    }, 80);
     return () => clearTimeout(timer);
-  }, [count, fitView]);
+  }, [count, focusNode, expandedNodeId, fitView, setCenter]);
   return null;
 }
 
 function RunFlowGraphInner({ edges, nodes, onSelectStep, selectedStepIndex }: RunFlowGraphProps) {
+  const [expandedNodeId, setExpandedNodeId] = useState<string | null>(null);
+  const activeExpandedNodeId = expandedNodeId ?? (selectedStepIndex === null || selectedStepIndex === undefined ? null : `S${selectedStepIndex + 1}`);
+
   const computedNodes = useMemo<Node[]>(
     () =>
-      layoutFlowGraph(nodes, edges, selectedStepIndex ?? null).map((node) => ({
+      layoutFlowGraph(nodes, edges, activeExpandedNodeId).map((node) => ({
         id: node.id,
         position: node.position,
-        data: { ...node.data, expanded: node.data.stepIndex === selectedStepIndex },
+        data: { ...node.data, expanded: node.id === activeExpandedNodeId },
         type: "card",
-        zIndex: node.data.stepIndex === selectedStepIndex ? 10 : 1,
+        zIndex: node.id === activeExpandedNodeId ? 10 : 1,
       })),
-    [nodes, edges, selectedStepIndex]
+    [nodes, edges, activeExpandedNodeId]
   );
 
   const computedEdges = useMemo<Edge[]>(
@@ -110,6 +159,16 @@ function RunFlowGraphInner({ edges, nodes, onSelectStep, selectedStepIndex }: Ru
       })),
     [edges]
   );
+
+  const focusNode = useMemo(() => {
+    const latestStepIndex = computedNodes.reduce((latest, node) => {
+      const stepIndex = (node.data as FlowNodeData).stepIndex;
+      return typeof stepIndex === "number" ? Math.max(latest, stepIndex) : latest;
+    }, -1);
+    if (latestStepIndex < 0) return undefined;
+
+    return computedNodes.find((node) => node.id === `S${latestStepIndex + 1}`);
+  }, [computedNodes]);
 
   // React Flow tự quản trạng thái node (kéo thả mượt, không giật). Chỉ re-seed
   // khi data đổi, và GIỮ vị trí người dùng đã kéo.
@@ -145,11 +204,12 @@ function RunFlowGraphInner({ edges, nodes, onSelectStep, selectedStepIndex }: Ru
         elementsSelectable
         proOptions={{ hideAttribution: true }}
         onNodeClick={(_event, node) => {
+          setExpandedNodeId(node.id);
           const stepIndex = (node.data as FlowNodeData).stepIndex;
           if (typeof stepIndex === "number") onSelectStep?.(stepIndex);
         }}
       >
-        <FitOnGrow count={nodes.length} />
+        <FocusOnGraphChange count={computedNodes.length} focusNode={focusNode} expandedNodeId={activeExpandedNodeId} />
         <Background gap={16} />
         <Controls showInteractive={false} />
       </ReactFlow>

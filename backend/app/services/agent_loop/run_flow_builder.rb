@@ -106,8 +106,8 @@ module AgentLoop
       "S#{index + 1}"
     end
 
-    def node_title(step, index)
-      "#{index + 1}. #{LABELS.fetch(step.kind, step.title)}"
+    def node_title(step, _index)
+      LABELS.fetch(step.kind, step.title)
     end
 
     # ----- Lane cho bước retrieval -----
@@ -131,11 +131,26 @@ module AgentLoop
       web_lane = []
       web_lane << { title: "Tìm trên web", details: web_details(data, web_results) } if tools.include?("web_search")
       if tools.include?("web_page_reader")
-        read = pages.select { |page| (page["status"] || page[:status]).to_s == "read" }
-        web_lane << { title: "Đọc trang web", details: [ "#{read.count} trang đọc được" ] }
+        web_lane << { title: "Đọc trang web", details: web_read_details(data, pages) }
       end
       lanes << web_lane if web_lane.any?
       lanes
+    end
+
+    def web_read_details(data, pages)
+      crawled = pages.any? ? pages : Array(data["results"] || data[:results])
+      return [ "chưa có link để crawler" ] if crawled.empty?
+
+      crawled.map do |page|
+        requested_url = page["requested_url"] || page[:requested_url] || page["url"] || page[:url]
+        final_url = page["url"] || page[:url]
+        status = page["status"] || page[:status] || "đang chờ"
+        error = page["error"] || page[:error]
+        parts = [ "link: #{clean(requested_url)}", "trạng thái: #{clean(status)}" ]
+        parts << "sau redirect: #{clean(final_url)}" if final_url.present? && final_url != requested_url
+        parts << "lỗi: #{clean(error)}" if error.present?
+        parts.join("; ")
+      end
     end
 
     def web_details(data, web_results)
@@ -154,7 +169,7 @@ module AgentLoop
     def bullet_details(titles)
       return [ "(không có kết quả)" ] if titles.blank?
 
-      titles.map { |title| "• #{clean(title)}" }
+      titles.map { |title| clean(title) }
     end
 
     def drive_doc?(document)
@@ -166,9 +181,7 @@ module AgentLoop
 
     def titles_of(items)
       names = Array(items).map { |item| item["title"] || item[:title] }.compact
-      return names if names.size <= MAX_ITEMS
-
-      names.first(MAX_ITEMS) + [ "+#{names.size - MAX_ITEMS} nữa" ]
+      names
     end
 
     # ----- Chi tiết cho từng loại bước -----

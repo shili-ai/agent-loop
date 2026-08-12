@@ -177,8 +177,18 @@ function PendingActivity() {
 
 function StepActivity({ step }: { step: AgentStep }) {
   const [showDetail, setShowDetail] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const tone = stepTone(step);
   const text = reasoningText(step);
+  const running = asText(step.data.status) === "running";
+  const runtime = running ? runningStepRuntime(step, now) : null;
+
+  useEffect(() => {
+    if (!running) return;
+
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [running]);
 
   return (
     <div className={`reason-step ${tone}`}>
@@ -190,6 +200,7 @@ function StepActivity({ step }: { step: AgentStep }) {
             {showDetail ? "Ẩn chi tiết" : "Chi tiết"}
           </button>
         </div>
+        {runtime ? <div className={runtime.stale ? "reason-runtime stale" : "reason-runtime"}>{runtime.label}</div> : null}
         {text ? <div className="reason-text">{text}</div> : null}
         {showDetail ? <StepIoPanel step={step} /> : null}
       </div>
@@ -215,11 +226,12 @@ function StepResultPreview({ step }: { step: AgentStep }) {
 
   if (step.kind === "web_read") {
     const pages = asRecords(step.data.pages);
-    if (!pages.length) return null;
+    const pendingResults = asRecords(step.data.results);
+    if (!pages.length && !pendingResults.length) return null;
 
     return (
       <div className="step-result-preview">
-        <WebPageReadGroup pages={pages} />
+        <WebPageReadGroup pages={pages} pendingResults={pendingResults} />
       </div>
     );
   }
@@ -251,7 +263,7 @@ function StepResultPreview({ step }: { step: AgentStep }) {
     const internal = documents.filter((doc) => !isDriveDoc(doc));
     const drive = documents.filter(isDriveDoc);
     const webResults = asRecords(step.data.web_results);
-    const pages = asRecords(step.data.pages).filter((page) => asText(page.status) === "read");
+    const pages = asRecords(step.data.pages);
 
     return (
       <div className="step-result-preview">
@@ -263,10 +275,7 @@ function StepResultPreview({ step }: { step: AgentStep }) {
           <WebEmptyGroup raw={asRecords(step.data.web_raw_results)} candidates={asRecords(step.data.web_candidates)} />
         )}
         {pages.length ? (
-          <div className="step-result-group">
-            <div className="step-result-title">Trang web đã đọc</div>
-            <div className="step-result-empty">Đọc được {pages.length} trang.</div>
-          </div>
+          <WebPageReadGroup pages={pages} />
         ) : null}
       </div>
     );
@@ -296,17 +305,40 @@ function StepResultPreview({ step }: { step: AgentStep }) {
   return null;
 }
 
-function WebPageReadGroup({ pages }: { pages: Record<string, unknown>[] }) {
+function WebPageReadGroup({
+  pages,
+  pendingResults = [],
+}: {
+  pages: Record<string, unknown>[];
+  pendingResults?: Record<string, unknown>[];
+}) {
+  const crawled = pages.length ? pages : pendingResults;
+
   return (
     <div className="step-result-group">
-      <div className="step-result-title">Trang đã đọc</div>
+      <div className="step-result-title">Link crawler {pages.length ? "đã trả về" : "đang chờ đọc"}</div>
       <div className="step-read-pages">
-        {pages.slice(0, 3).map((page, index) => (
+        {crawled.map((page, index) => (
           <article className="step-read-page" key={`${asText(page.title) || asText(page.url) || index}-${index}`}>
             <div className="step-read-page-head">
               <span className="step-result-name">{asText(page.title) || asText(page.url) || "Không có tiêu đề"}</span>
-              {asText(page.url) ? <span className="step-result-url"> · {asText(page.url)}</span> : null}
+              {asText(page.requested_url) || asText(page.url) ? (
+                <a
+                  className="step-result-url"
+                  href={asText(page.requested_url) || asText(page.url)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {asText(page.requested_url) || asText(page.url)}
+                </a>
+              ) : null}
             </div>
+            {asText(page.requested_url) && asText(page.url) && asText(page.requested_url) !== asText(page.url) ? (
+              <a className="step-result-url step-result-redirect-url" href={asText(page.url)} target="_blank" rel="noreferrer">
+                Sau redirect: {asText(page.url)}
+              </a>
+            ) : null}
+            {asText(page.status) ? <div className="step-read-status">Trạng thái crawler: {asText(page.status)}</div> : null}
             {asText(page.error) ? <div className="step-result-empty">Không đọc được: {asText(page.error)}</div> : null}
             {asText(page.content) ? <pre className="step-read-content">{truncateText(asText(page.content), 900)}</pre> : null}
           </article>
@@ -507,12 +539,14 @@ function stepMetadata(step: AgentStep) {
 
   addItem("Bước", step.title);
   addItem("Loại", step.kind);
+  addItem("Trạng thái", data.status);
+  addItem("Bắt đầu", data.request_started_at || step.created_at);
+  addItem("Cập nhật", step.updated_at);
 
   if (step.kind === "llm") {
     addItem("Provider", data.provider);
     addItem("Model", data.model);
     addItem("Prompt layers", promptLayerSummary(data.prompt_layers), true);
-    addItem("Trạng thái", data.status);
     addItem("Thời gian", formatMs(data.total_duration_ms));
     addItem("Token đầu", formatMs(data.first_token_latency_ms));
   }
@@ -659,6 +693,28 @@ function stepOutput(step: AgentStep): { content: string } | null {
 function formatMs(value: unknown) {
   if (typeof value !== "number") return value;
   return value < 1000 ? `${value} ms` : `${(value / 1000).toFixed(1)} s`;
+}
+
+function runningStepRuntime(step: AgentStep, now: number): { label: string; stale: boolean } | null {
+  const startedAt = asText(step.data.request_started_at) || step.created_at;
+  if (!startedAt) return null;
+
+  const startedMs = Date.parse(startedAt);
+  if (Number.isNaN(startedMs)) return null;
+
+  const elapsedSeconds = Math.max(0, Math.floor((now - startedMs) / 1000));
+  const stale = elapsedSeconds >= 60;
+  return {
+    label: stale ? `Có thể đã kẹt · ${formatDuration(elapsedSeconds)}` : `Đang chạy · ${formatDuration(elapsedSeconds)}`,
+    stale,
+  };
+}
+
+function formatDuration(totalSeconds: number): string {
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }
 
 function asRecords(value: unknown): Record<string, unknown>[] {

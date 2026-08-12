@@ -43,6 +43,7 @@ module AgentLoop
 
       {
         title: title,
+        requested_url: url,
         url: response.uri.to_s,
         description: description,
         headings: headings,
@@ -83,6 +84,7 @@ module AgentLoop
     def failure(result, reason)
       {
         title: result[:title],
+        requested_url: result[:url],
         url: result[:url],
         description: result[:snippet],
         headings: [],

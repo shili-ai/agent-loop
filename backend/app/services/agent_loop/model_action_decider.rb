@@ -42,14 +42,16 @@ module AgentLoop
 
       guard_answered_clarification(
         guard_clarification_required(
-          guard_verified_artifact(
-            guard_artifact_needs_verification(
-              guard_artifact_needs_revision(
-                guard_completed_artifact(
-                  guard_repeated_web_search(
-                    guard_repeated_search(
-                      guard_stop_after_empty_web_search(
-                        guard_prefer_web_search(decide)
+          guard_direct_final_plan(
+            guard_verified_artifact(
+              guard_artifact_needs_verification(
+                guard_artifact_needs_revision(
+                  guard_completed_artifact(
+                    guard_repeated_web_search(
+                      guard_repeated_search(
+                        guard_stop_after_empty_web_search(
+                          guard_prefer_web_search(decide)
+                        )
                       )
                     )
                   )
@@ -62,6 +64,18 @@ module AgentLoop
     end
 
     private
+
+    def guard_direct_final_plan(decision)
+      return decision if decision[:action] == "final_answer"
+      return decision unless direct_final_plan?
+      return decision if artifact? && latest_artifact_status != "verified"
+
+      build(
+        "final_answer",
+        "Plan chỉ cần trả lời trực tiếp, nên mình không tạo bản nháp hay tìm nguồn thêm.",
+        source: "guard"
+      )
+    end
 
     def decide
       @last_prompt_messages = prompt_messages
@@ -195,6 +209,15 @@ module AgentLoop
 
     def forced_final
       build("final_answer", "Đã chạm giới hạn #{@max_iterations} vòng, dừng để tổng hợp.", source: "guard")
+    end
+
+    def direct_final_plan?
+      actions = Array(@plan&.dig(:actions)).map(&:to_s).reject(&:blank?)
+      return true if actions == [ "final_answer" ]
+
+      steps = Array(@plan&.dig(:steps))
+      step_actions = steps.map { |step| step[:action] || step["action"] }.map(&:to_s).reject(&:blank?)
+      step_actions == [ "final_answer" ]
     end
 
     def guard_answered_clarification(decision)
