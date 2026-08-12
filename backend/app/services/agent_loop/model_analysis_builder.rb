@@ -33,8 +33,7 @@ module AgentLoop
     def call_with_metrics
       result = @client.chat_with_metrics(messages: messages, temperature: 0, format: "json")
       parsed = parse(result[:content])
-      fallback = fallback_analysis
-      analysis = normalize(parsed, fallback)
+      analysis = normalize(parsed)
 
       {
         analysis: analysis.merge(source: "model"),
@@ -42,20 +41,7 @@ module AgentLoop
         raw: result[:content]
       }
     rescue StandardError => e
-      fallback = fallback_analysis
-      {
-        analysis: fallback.merge(
-          source: "fallback",
-          error: e.message,
-          output: fallback_output(fallback, e)
-        ),
-        metrics: {
-          provider: @client.provider,
-          model: @client.model,
-          status: "failed"
-        },
-        raw: nil
-      }
+      raise "Model phân tích không tạo được plan hợp lệ: #{e.message}"
     end
 
     private
@@ -90,17 +76,22 @@ module AgentLoop
         .first(8)
     end
 
-    def normalize(parsed, fallback)
-      intent = INTENTS.include?(parsed[:intent]) ? parsed[:intent] : fallback[:intent]
-      goal = parsed[:goal].to_s.strip.presence || fallback[:goal]
-      understanding = parsed[:understanding].to_s.strip.presence || fallback[:understanding]
+    def normalize(parsed)
+      intent = parsed[:intent].to_s
+      raise "Intent từ model không hợp lệ" unless INTENTS.include?(intent)
+
+      goal = parsed[:goal].to_s.strip
+      understanding = parsed[:understanding].to_s.strip
+      raise "Model thiếu mục tiêu" if goal.blank?
+      raise "Model thiếu phần hiểu yêu cầu" if understanding.blank?
 
       steps = normalize_steps(parsed[:steps])
-      steps = normalize_steps(fallback[:steps]) if steps.empty?
+      raise "Model không trả các bước thực hiện hợp lệ" if steps.empty?
       steps = artifact_requested?(intent) ? artifact_plan_steps(steps) : steps.reject { |step| %w[draft_artifact verify_artifact revise_artifact].include?(step[:action]) }
       steps = ensure_final_step(steps)
       actions = steps.map { |step| step[:action] }.uniq
-      keywords = normalize_keywords(parsed[:keywords]).presence || fallback[:keywords]
+      keywords = normalize_keywords(parsed[:keywords])
+      raise "Model không trả từ khoá tìm kiếm" if keywords.blank? && steps.any? { |step| %w[search_documents web_search].include?(step[:action]) }
 
       {
         understanding: understanding,

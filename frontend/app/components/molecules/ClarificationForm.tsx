@@ -17,11 +17,13 @@ export default function ClarificationForm({ questions, disabled, onSubmit }: Cla
   const [collected, setCollected] = useState<Collected[]>([]);
   const [customMode, setCustomMode] = useState(false);
   const [customText, setCustomText] = useState("");
+  const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   const submittedRef = useRef(false);
   const customInputRef = useRef<HTMLInputElement>(null);
 
   const current = questions[index];
-  const options = current?.type === "choice" ? current.options ?? [] : [];
+  const type = current?.type ?? "single";
+  const options = type === "text" ? [] : current?.options ?? [];
   const total = questions.length;
 
   useEffect(() => {
@@ -44,6 +46,7 @@ export default function ClarificationForm({ questions, disabled, onSubmit }: Cla
       setIndex((value2) => value2 + 1);
       setCustomMode(false);
       setCustomText("");
+      setSelectedOptions([]);
     } else {
       finish(next);
     }
@@ -52,12 +55,20 @@ export default function ClarificationForm({ questions, disabled, onSubmit }: Cla
   function submitCustom() {
     const value = customText.trim();
     if (!value) return;
-    answer(value);
+    answer(type === "multiple" ? [...selectedOptions, value].join(", ") : value);
+  }
+
+  function toggleMultiple(option: string) {
+    setSelectedOptions((selected) => (selected.includes(option) ? selected.filter((item) => item !== option) : [...selected, option]));
+  }
+
+  function submitMultiple() {
+    answer(selectedOptions.join(", "));
   }
 
   return (
     <div className="clarify-card" onKeyDown={(event) => {
-      if (customMode) return;
+      if (customMode || type !== "single") return;
       const digit = Number(event.key);
       if (Number.isInteger(digit) && digit >= 1 && digit <= options.length) {
         event.preventDefault();
@@ -79,21 +90,22 @@ export default function ClarificationForm({ questions, disabled, onSubmit }: Cla
           <button
             type="button"
             key={option}
-            className="clarify-option"
+            className={type === "multiple" && selectedOptions.includes(option) ? "clarify-option selected" : "clarify-option"}
             disabled={disabled}
-            onClick={() => answer(option)}
+            aria-pressed={type === "multiple" ? selectedOptions.includes(option) : undefined}
+            onClick={() => (type === "multiple" ? toggleMultiple(option) : answer(option))}
           >
             <span className="clarify-num">{optionIndex + 1}</span>
             <span className="clarify-option-label">{option}</span>
-            <EnterOutlined className="clarify-enter" />
+            {type === "multiple" ? <span className="clarify-select-mark">{selectedOptions.includes(option) ? "✓" : ""}</span> : <EnterOutlined className="clarify-enter" />}
           </button>
         ))}
 
-        <div className={customMode ? "clarify-option clarify-other editing" : "clarify-option clarify-other"}>
+        <div className={customMode || type === "text" ? "clarify-option clarify-other editing" : "clarify-option clarify-other"}>
           <span className="clarify-num">
             <EditOutlined />
           </span>
-          {customMode ? (
+          {customMode || type === "text" ? (
             <input
               ref={customInputRef}
               className="clarify-custom-input"
@@ -113,10 +125,9 @@ export default function ClarificationForm({ questions, disabled, onSubmit }: Cla
               Câu trả lời khác
             </button>
           )}
-          <button type="button" className="clarify-skip" onClick={() => answer("")}>
-            Bỏ qua
-          </button>
+          {customMode || type === "text" ? <button type="button" className="clarify-skip" disabled={disabled} onClick={submitCustom}>Tiếp tục</button> : <button type="button" className="clarify-skip" onClick={() => answer("")}>Bỏ qua</button>}
         </div>
+        {type === "multiple" ? <button type="button" className="clarify-continue" disabled={disabled} onClick={submitMultiple}>Tiếp tục ({selectedOptions.length} lựa chọn)</button> : null}
       </div>
     </div>
   );

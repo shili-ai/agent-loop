@@ -39,7 +39,14 @@ export default function InlineAgentRun({ finalAnswer, onOpenLibraryItem, pending
     !running &&
     (run?.status === "failed" || run?.status === "cancelled" || visibleSteps.some((step) => step.kind === "clarification"));
   // Dựng sơ đồ LIVE từ các bước đã stream về (không chờ step "flow" ở cuối run).
-  const flowGraph = visibleSteps.length ? buildRunFlowGraph(visibleSteps, { running, blocked }) : null;
+  const [flowNow, setFlowNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!running) return;
+
+    const timer = window.setInterval(() => setFlowNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [running]);
+  const flowGraph = visibleSteps.length ? buildRunFlowGraph(visibleSteps, { running, blocked, now: flowNow }) : null;
   const [expanded, setExpanded] = useState(false);
   const [viewMode, setViewMode] = useState<"trace" | "flow">("flow");
   const [selectedStepIndex, setSelectedStepIndex] = useState<number | null>(null);
@@ -577,6 +584,10 @@ function stepMetadata(step: AgentStep) {
     addItem("Mục tiêu", data.goal, true);
     addItem("Từ khoá", Array.isArray(data.keywords) ? data.keywords.join(", ") : undefined, true);
     addItem("Số bước", Array.isArray(data.steps) ? data.steps.length : undefined);
+  }
+
+  if (data.derived_from === "model_analysis") {
+    addItem("Nguồn", "Tách từ lượt gọi model phân tích ở trên (không gọi lại model)", true);
   }
 
   if (step.kind === "artifact") {

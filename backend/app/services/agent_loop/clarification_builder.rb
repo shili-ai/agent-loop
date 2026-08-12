@@ -2,7 +2,7 @@ require "json"
 
 module AgentLoop
   class ClarificationBuilder
-    MIN_QUESTIONS = 3
+    MIN_QUESTIONS = 1
     MAX_QUESTIONS = 5
     MIN_OPTIONS = 2
     MAX_OPTIONS = 4
@@ -25,7 +25,7 @@ module AgentLoop
       prompt = prompt_messages
       result = @client.chat_with_metrics(messages: prompt, temperature: 0.2, format: "json")
       questions = sanitize_questions(parse(result[:content]))
-      raise "Model không tạo đủ câu hỏi làm rõ" if questions.length < MIN_QUESTIONS
+      raise "Model không tạo được câu hỏi làm rõ hợp lệ" if questions.length < MIN_QUESTIONS
 
       {
         questions: questions,
@@ -39,17 +39,7 @@ module AgentLoop
         raw: result[:content]
       }
     rescue StandardError => e
-      questions = fallback_questions
-      {
-        questions: questions,
-        output: markdown_output(questions, source: "fallback"),
-        source: "fallback",
-        provider: @client.provider,
-        model: @client.model,
-        prompt_messages: prompt_messages,
-        prompt_layers: prompt_layer_summary,
-        error: e.message
-      }
+      raise "Model không tạo được câu hỏi làm rõ hợp lệ: #{e.message}"
     end
 
     private
@@ -98,14 +88,17 @@ module AgentLoop
         next unless item.is_a?(Hash)
 
         question = item["question"].to_s.squish
+        type = item["type"].to_s
+        type = "single" if type == "choice" # Tương thích output model cũ.
+        type = "single" unless %w[single multiple text].include?(type)
         options = Array(item["options"]).map { |option| option.to_s.squish }.reject(&:blank?).uniq.first(MAX_OPTIONS)
-        next if question.blank? || options.length < MIN_OPTIONS
+        next if question.blank? || (type != "text" && options.length < MIN_OPTIONS)
 
         {
           id: item["id"].presence || question_id(question, index),
           question: question,
-          type: "choice",
-          options: options
+          type: type,
+          options: type == "text" ? [] : options
         }
       end.first(MAX_QUESTIONS)
     end
@@ -130,31 +123,12 @@ module AgentLoop
       return risky_change_questions if clarification_policy.category == "risky_change"
       return ambiguous_change_questions if clarification_policy.category == "ambiguous_change"
 
-      output_options = inferred_output_options
       [
         {
           id: "desired_output",
           question: "Bạn muốn agent ưu tiên dạng đầu ra nào cho yêu cầu này?",
-          type: "choice",
-          options: output_options
-        },
-        {
-          id: "audience_context",
-          question: "Ngữ cảnh người nhận hoặc khách hàng nên được hiểu theo hướng nào?",
-          type: "choice",
-          options: [ "SMB cần giải pháp nhanh", "Enterprise quan tâm bảo mật và tích hợp", "Đội mua hàng cần ROI rõ", "Chưa xác định, agent tự giả định hợp lý" ]
-        },
-        {
-          id: "depth",
-          question: "Mức độ chi tiết bạn muốn agent dùng là gì?",
-          type: "choice",
-          options: [ "Ngắn gọn để gửi ngay", "Có luận điểm và bằng chứng", "Chi tiết theo từng bước", "Chỉ cần khung nháp để chỉnh tiếp" ]
-        },
-        {
-          id: "tone",
-          question: "Giọng văn nên theo hướng nào?",
-          type: "choice",
-          options: [ "Chuyên nghiệp, trực tiếp", "Tư vấn mềm và thân thiện", "Thuyết phục theo số liệu", "Trung lập để dễ tuỳ chỉnh" ]
+          type: "multiple",
+          options: inferred_output_options
         }
       ]
     end
@@ -164,19 +138,19 @@ module AgentLoop
         {
           id: "estimate_scope",
           question: "Bạn muốn estimate những hạng mục/chức năng nào?",
-          type: "choice",
+          type: "multiple",
           options: [ "Chỉ tích hợp cổng thanh toán", "Cổng thanh toán và webhook", "Bao gồm UI, backend và kiểm thử", "Gửi scope chi tiết riêng" ]
         },
         {
           id: "estimate_format",
           question: "Bạn muốn nhận estimate theo định dạng nào?",
-          type: "choice",
+          type: "single",
           options: [ "Bảng Markdown", "File CSV", "Cả Markdown và CSV", "Proposal có bảng estimate" ]
         },
         {
           id: "estimate_unit",
           question: "Đơn vị ước lượng bạn cần là gì?",
-          type: "choice",
+          type: "multiple",
           options: [ "Man-day", "Giờ công", "Chi phí USD", "Giờ công và chi phí USD" ]
         }
       ]
@@ -189,18 +163,6 @@ module AgentLoop
           question: "Bạn muốn áp dụng thay đổi ở mức nào?",
           type: "choice",
           options: [ "Chỉ UI/wording", "Backend behavior nhưng giữ fallback", "Xoá/đổi hẳn code liên quan", "Cả frontend, backend và docs" ]
-        },
-        {
-          id: "data_policy",
-          question: "Dữ liệu hoặc cấu hình local hiện có nên xử lý thế nào?",
-          type: "choice",
-          options: [ "Giữ nguyên dữ liệu local", "Chỉ dọn config không còn dùng", "Xoá cả dữ liệu phát sinh", "Hỏi riêng trước khi xoá dữ liệu" ]
-        },
-        {
-          id: "compatibility",
-          question: "Có cần giữ tương thích ngược trong một thời gian không?",
-          type: "choice",
-          options: [ "Có, giữ fallback/migration", "Không, đổi thẳng sang cách mới", "Chỉ giữ API cũ tạm thời", "Chưa chắc, đề xuất phương án an toàn" ]
         }
       ]
     end
@@ -212,18 +174,6 @@ module AgentLoop
           question: "Bạn muốn mình tác động vào phần nào trước?",
           type: "choice",
           options: [ "Frontend/UI", "Backend/agent loop", "Prompt/skill", "Cả luồng end-to-end" ]
-        },
-        {
-          id: "success_criteria",
-          question: "Tiêu chí hoàn thành chính là gì?",
-          type: "choice",
-          options: [ "Đúng hành vi trước", "UI nhìn hợp lý hơn", "Câu trả lời chất lượng hơn", "Giảm lỗi và dễ debug hơn" ]
-        },
-        {
-          id: "change_depth",
-          question: "Mức độ thay đổi bạn muốn là gì?",
-          type: "choice",
-          options: [ "Nhỏ, ít rủi ro", "Vừa phải, có refactor nhẹ", "Mạnh tay nếu kiến trúc tốt hơn", "Hỏi lại trước mỗi thay đổi lớn" ]
         }
       ]
     end

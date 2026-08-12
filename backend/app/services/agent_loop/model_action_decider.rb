@@ -127,7 +127,7 @@ module AgentLoop
       parsed = parse(result[:content])
       build(parsed[:action], parsed[:reason], source: "model", metrics: result[:metrics], raw: result[:content])
     rescue StandardError => e
-      fallback(e)
+      raise "Model không chọn được action tiếp theo: #{e.message}"
     end
 
     # Chặn vòng lặp tìm tài liệu vô ích: nếu đã tìm đủ số lần mà vẫn không có

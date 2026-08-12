@@ -46,6 +46,7 @@ function CardNode({ data }: NodeProps) {
     <div className={classes}>
       <Handle type="target" position={Position.Top} isConnectable={false} />
       <div className="flow-node-head">
+        {node.elapsedSeconds !== null ? <span className="flow-node-badge elapsed">{node.elapsedSeconds}s</span> : null}
         {node.isStart ? <span className="flow-node-badge start">▶ Bắt đầu</span> : null}
         {node.isEnd ? <span className="flow-node-badge end">■ Kết thúc</span> : null}
         <span className={`flow-node-status-dot ${node.status}`} />
@@ -89,6 +90,7 @@ function CardNode({ data }: NodeProps) {
 const nodeTypes = { card: CardNode };
 const COLLAPSED_NODE_W = 240;
 const COLLAPSED_NODE_H = 92;
+const EXPANDED_NODE_W = 560;
 
 function statusLabel(status: FlowNodeData["status"]) {
   return { done: "Xong", active: "Đang chạy", pending: "Chờ", blocked: "Bị chặn" }[status];
@@ -99,13 +101,15 @@ function statusLabel(status: FlowNodeData["status"]) {
 function FocusOnGraphChange({
   count,
   focusNode,
+  expandedNode,
   expandedNodeId,
 }: {
   count: number;
   focusNode?: Node;
+  expandedNode?: Node;
   expandedNodeId?: string | null;
 }) {
-  const { fitView, setCenter } = useReactFlow();
+  const { fitView, getZoom, setCenter } = useReactFlow();
   const previousCountRef = useRef<number | null>(null);
   const previousExpandedNodeRef = useRef<string | null | undefined>(undefined);
 
@@ -127,12 +131,23 @@ function FocusOnGraphChange({
         return;
       }
 
-      if (initialRender || selectedChanged) {
+      if (initialRender) {
         fitView({ padding: 0.2, duration: 400 });
+        return;
+      }
+
+      // Bung/thu chi tiết không được fit lại toàn bộ graph vì node rộng hơn sẽ
+      // khiến React Flow hạ zoom mỗi lần click. Giữ nguyên zoom và chỉ đưa node
+      // đang xem vào trung tâm.
+      if (selectedChanged && expandedNode) {
+        setCenter(expandedNode.position.x + EXPANDED_NODE_W / 2, expandedNode.position.y + COLLAPSED_NODE_H / 2, {
+          duration: 300,
+          zoom: getZoom(),
+        });
       }
     }, 80);
     return () => clearTimeout(timer);
-  }, [count, focusNode, expandedNodeId, fitView, setCenter]);
+  }, [count, focusNode, expandedNode, expandedNodeId, fitView, getZoom, setCenter]);
   return null;
 }
 
@@ -175,6 +190,8 @@ function RunFlowGraphInner({ edges, nodes, onSelectStep, selectedStepIndex }: Ru
     return computedNodes.find((node) => node.id === `S${latestStepIndex + 1}`);
   }, [computedNodes]);
 
+  const expandedNode = useMemo(() => computedNodes.find((node) => node.id === activeExpandedNodeId), [activeExpandedNodeId, computedNodes]);
+
   // React Flow tự quản trạng thái node (kéo thả mượt, không giật). Chỉ re-seed
   // khi data đổi, và GIỮ vị trí người dùng đã kéo.
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState(computedNodes);
@@ -214,7 +231,7 @@ function RunFlowGraphInner({ edges, nodes, onSelectStep, selectedStepIndex }: Ru
           if (typeof stepIndex === "number") onSelectStep?.(stepIndex);
         }}
       >
-        <FocusOnGraphChange count={computedNodes.length} focusNode={focusNode} expandedNodeId={activeExpandedNodeId} />
+        <FocusOnGraphChange count={computedNodes.length} focusNode={focusNode} expandedNode={expandedNode} expandedNodeId={activeExpandedNodeId} />
         <Background gap={16} />
         <Controls showInteractive={false} />
       </ReactFlow>

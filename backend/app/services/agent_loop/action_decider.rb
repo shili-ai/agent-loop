@@ -77,18 +77,7 @@ module AgentLoop
     end
 
     def answered_clarification?
-      @message.downcase.include?("bổ sung ngữ cảnh:") || recent_user_messages.any? do |message|
-        message.to_s.downcase.start_with?("bổ sung ngữ cảnh:")
-      end
-    end
-
-    def recent_user_messages
-      Array(@context[:recent_messages]).filter_map do |message|
-        role = message[:role] || message["role"]
-        next unless role == "user"
-
-        message[:content] || message["content"]
-      end
+      @message.downcase.include?("bổ sung ngữ cảnh:")
     end
   end
 end

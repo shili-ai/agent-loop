@@ -35,6 +35,7 @@ module AgentLoop
     end
 
     def required?
+      return true if clarification_help_request?
       return true if estimate_request? && !estimate_context_available?
       return false if already_clarified?
       return true if risky_change?
@@ -44,6 +45,7 @@ module AgentLoop
     end
 
     def reason
+      return "Mình đã chuẩn bị form để bạn bổ sung đúng các thông tin còn thiếu." if clarification_help_request?
       return "Estimate cần chốt phạm vi, định dạng đầu ra và đơn vị ước lượng trước khi tính." if estimate_request? && !estimate_context_available?
       return "Yêu cầu có thể xoá/đổi cấu trúc hoặc thay đổi hành vi quan trọng, cần xác nhận phạm vi trước khi làm." if risky_change?
       return "Yêu cầu còn có nhiều cách hiểu hợp lý, cần hỏi lại để chọn đúng hướng." if ambiguous_change?
@@ -52,6 +54,7 @@ module AgentLoop
     end
 
     def category
+      return "estimate" if clarification_help_request? && estimate_request?
       return "estimate" if estimate_request? && !estimate_context_available?
       return "risky_change" if risky_change?
       return "ambiguous_change" if ambiguous_change?
@@ -66,7 +69,7 @@ module AgentLoop
     end
 
     def estimate_request?
-      normalized.match?(/\b(est|estimate)\b/) || normalized.match?(/ước lượng|uoc luong/)
+      conversation_text.match?(/\b(est|estimate)\b/) || conversation_text.match?(/ước lượng|uoc luong/)
     end
 
     def estimate_context_available?
@@ -94,8 +97,19 @@ module AgentLoop
 
     def already_clarified?
       @state[:clarification].present? ||
-        normalized.include?("bổ sung ngữ cảnh:") ||
-        recent_user_messages.any? { |message| message.to_s.downcase.start_with?("bổ sung ngữ cảnh:") }
+        normalized.include?("bổ sung ngữ cảnh:")
+    end
+
+    def clarification_help_request?
+      normalized.match?(/c[aầ]n\s+(b[oổ]\s*sung|th[eê]m).*g[iì]/) || normalized.match?(/b[oổ]\s*sung.*g[iì]/)
+    end
+
+    def conversation_text
+      @conversation_text ||= [ @message, *recent_messages ].join("\n").downcase
+    end
+
+    def recent_messages
+      Array(@context[:recent_messages]).filter_map { |message| message[:content] || message["content"] }
     end
 
     def recent_user_messages

@@ -1385,6 +1385,16 @@ body {
   background: #f7f7f8;
 }
 
+.clarify-option.selected {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.clarify-option.selected .clarify-num {
+  background: #2563eb;
+  color: #ffffff;
+}
+
 .clarify-num {
   display: inline-flex;
   align-items: center;
@@ -1415,6 +1425,28 @@ body {
 .clarify-option:hover .clarify-enter {
   opacity: 1;
 }
+
+.clarify-select-mark {
+  min-width: 18px;
+  color: #2563eb;
+  font-weight: 800;
+  text-align: center;
+}
+
+.clarify-continue {
+  align-self: flex-end;
+  margin: 10px 14px;
+  border: 0;
+  border-radius: 7px;
+  background: #2563eb;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 12px;
+}
+
+.clarify-continue:disabled { opacity: 0.55; cursor: default; }
 
 .clarify-other {
   background: #fafafa;
@@ -3810,6 +3842,7 @@ a.step-result-url:hover { text-decoration: underline; }
 
 .flow-node-badge.start { background: #dcfce7; color: #15803d; }
 .flow-node-badge.end { background: #e0e7ff; color: #4338ca; }
+.flow-node-badge.elapsed { background: #e0f2fe; color: #0369a1; }
 
 .flow-node-status-dot {
   width: 8px;

@@ -25,7 +25,7 @@ module AgentLoop
       lines << artifact[:title]
       artifact[:bullets].each { |bullet| lines << "- #{bullet}" }
       lines << ""
-      lines << "**Nguồn demo:**"
+      lines << "**Nguồn đã dùng:**"
       @tool_result[:documents].each do |document|
         lines << "- #{document[:title]} (#{document[:type]}): #{document[:snippet]}"
       end
@@ -159,16 +159,11 @@ module AgentLoop
     end
 
     def clarification_answer
-      lines = [ "Mình cần thêm một chút ngữ cảnh để trả lời chính xác hơn:", "" ]
-      @clarification[:questions].each do |question|
-        text = question.is_a?(Hash) ? question[:question] : question
-        lines << "- #{text}"
-      end
-      lines.join("\n")
+      "Mình cần làm rõ vài thông tin trước khi tiếp tục. Bạn chọn câu trả lời trong form bên dưới nhé."
     end
 
     def document_search_answer
-      lines = [ "Mình đã tìm được các tài liệu demo liên quan:", "" ]
+      lines = [ "Mình đã tìm được các tài liệu liên quan:", "" ]
       @tool_result[:documents].each do |document|
         lines << "- **#{document[:title]}** (`#{document[:type]}`): #{document[:snippet]}"
       end

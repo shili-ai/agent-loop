@@ -14,7 +14,7 @@ module AgentLoop
     def self.enqueue(conversation:, content:, model: nil)
       # Runner thực thi trong Thread riêng. Preload các class artifact tại request
       # thread để Zeitwerk không phải autoload chúng giữa lúc worker đang chạy.
-      [ ArtifactBuilder, ArtifactVerifier, ArtifactReviser ].each(&:name)
+      [ ModelArtifactBuilder, ModelArtifactVerifier ].each(&:name)
       recover_stale_runs!(conversation: conversation)
 
       user_message = conversation.agent_messages.create!(role: "user", content: content)
@@ -86,7 +86,10 @@ module AgentLoop
         "reasoning",
         analysis[:source] == "model" ? "Phân tích ý định bằng model" : "Phân tích ý định fallback",
         analysis_summary(analysis, request_content),
-        analysis.merge(intent_note: IntentNoteBuilder.new(intent: intent, message: request_content).call)
+        analysis.merge(
+          intent_note: IntentNoteBuilder.new(intent: intent, message: request_content).call,
+          derived_from: analysis[:source] == "model" ? "model_analysis" : "fallback_analysis"
+        )
       )
 
       plan = {
@@ -102,7 +105,10 @@ module AgentLoop
         "plan",
         analysis[:source] == "model" ? "Lập plan bằng model" : "Lập plan fallback",
         "Mình dự định lần lượt: #{plan_actions}. Mục tiêu: #{plan[:goal]}",
-        plan.merge(source: analysis[:source])
+        plan.merge(
+          source: analysis[:source],
+          derived_from: analysis[:source] == "model" ? "model_analysis" : "fallback_analysis"
+        )
       )
       check_cancelled!(run)
 
@@ -344,15 +350,19 @@ module AgentLoop
             status: "completed"
           }
         )
-        if results.any?
+        # Đánh giá link trước khi crawl: chỉ đọc trang đã pass để tránh tốn
+        # request cho nguồn kém khớp và để flow phản ánh đúng filter → read.
+        evaluate_search_results(run, state, message)
+        accepted_results = Array(state[:web_results])
+        if accepted_results.any?
           read_step = create_step(
             run,
             "web_read",
             "Đọc trang web",
             "Mình đang đọc nội dung chính của các trang web đạt chuẩn.",
-            { tools: [ "web_page_reader" ], results: results, status: "running", request_started_at: Time.now.utc.iso8601(6) }
+            { tools: [ "web_page_reader" ], results: accepted_results, status: "running", request_started_at: Time.now.utc.iso8601(6) }
           )
-          pages = WebPageReader.new(results: results).call
+          pages = WebPageReader.new(results: accepted_results).call
           readable_pages = pages.select { |page| page[:status] == "read" && page[:content].present? }
           state[:web_pages] = readable_pages
           append_working_note(
@@ -372,14 +382,15 @@ module AgentLoop
             }
           )
         end
+        # Đánh giá thêm nội dung các trang vừa đọc (nếu có), trước khi dùng làm bằng chứng.
         evaluate_search_results(run, state, message)
       when "draft_artifact"
         step = create_step(
           run,
           "artifact",
-          "Soạn bản nháp",
-          "Mình đang soạn bản nháp dựa trên nguồn và ngữ cảnh hiện có.",
-          { tools: [], documents_count: state[:documents].to_a.count, status: "running", request_started_at: Time.now.utc.iso8601(6) }
+          "Model soạn bản nháp",
+          "Mình đang gọi model để soạn bản nháp từ nguồn và ngữ cảnh hiện có.",
+          { tools: [], documents_count: state[:documents].to_a.count, provider: local_model_client.provider, model: local_model_client.model, status: "running", request_started_at: Time.now.utc.iso8601(6) }
         )
         artifact_result = build_artifact(intent: intent, documents: state[:documents], message: message, context: context)
         artifact = artifact_result[:artifact].merge(content: artifact_result[:output])
@@ -403,6 +414,10 @@ module AgentLoop
           summary: "Dựa trên #{evidence} tài liệu tìm được, mình phác thảo bản nháp “#{artifact[:title]}”#{sections.any? ? " bằng #{sections.count} phần nhỏ rồi ghép thành file cuối" : (bullets.any? ? " gồm #{bullets.count} ý chính" : "")}.",
           data: {
             tools: [ artifact_result[:tool] ],
+            provider: artifact_result[:metrics]&.dig(:provider) || artifact_result[:metrics]&.dig("provider"),
+            model: artifact_result[:metrics]&.dig(:model) || artifact_result[:metrics]&.dig("model"),
+            total_duration_ms: artifact_result[:metrics]&.dig(:total_duration_ms) || artifact_result[:metrics]&.dig("total_duration_ms"),
+            prompt_messages: artifact_result[:prompt_messages],
             artifact: artifact,
             artifact_entry: artifact_entry,
             output: artifact_result[:output],
@@ -413,12 +428,12 @@ module AgentLoop
         step = create_step(
           run,
           "verification",
-          "Kiểm tra bản nháp",
-          "Mình đang kiểm tra bản nháp trước khi tổng hợp câu trả lời.",
-          { status: "running", request_started_at: Time.now.utc.iso8601(6) }
+          "Model kiểm tra bản nháp",
+          "Mình đang gọi model độc lập để kiểm tra bản nháp trước khi tổng hợp câu trả lời.",
+          { provider: local_model_client.provider, model: local_model_client.model, status: "running", request_started_at: Time.now.utc.iso8601(6) }
         )
         latest = latest_artifact_entry(state)
-        verification = ArtifactVerifier.new(artifact: latest&.dig(:artifact) || state[:artifact], message: message).call
+        verification = verify_artifact(artifact: latest&.dig(:artifact) || state[:artifact], message: message, documents: state[:documents])
         update_latest_artifact(state, status: verification[:status], checks: verification[:checks])
         append_working_note(
           state,
@@ -789,11 +804,11 @@ module AgentLoop
       answer
     rescue StandardError => e
       step&.update!(
-        title: "Fallback khi model lỗi",
-        summary: "Model local bị lỗi, dùng bộ tổng hợp mặc định.",
+        title: "Model không thể hoàn tất",
+        summary: "Model local bị lỗi; không tạo câu trả lời thay thế để tránh dữ liệu không có căn cứ.",
         data: { error: e.message, prompt_messages: generator&.prompt_messages, prompt_layers: generator&.prompt_layer_summary, output: nil, status: "failed" }
       )
-      nil
+      raise
     end
 
     def local_model_client
@@ -802,25 +817,38 @@ module AgentLoop
 
     def build_artifact(intent:, documents:, message:, context:)
       with_artifact_timeout do
-        ArtifactBuilder.new(
+        ModelArtifactBuilder.new(
           intent: intent,
           documents: documents,
           message: message,
-          source_content: latest_assistant_content(context)
-        ).call
+          context: context,
+          client: local_model_client
+        ).call_with_metrics
       end
+    end
+
+    def verify_artifact(artifact:, message:, documents:)
+      ModelArtifactVerifier.new(
+        artifact: artifact,
+        message: message,
+        documents: documents,
+        client: local_model_client
+      ).call_with_metrics
     end
 
     def build_artifact_revision(artifact:, message:, intent:, documents:, checks:, context:)
       with_artifact_timeout do
-        ArtifactReviser.new(
-          artifact: artifact,
-          message: message,
+        ModelArtifactBuilder.new(
           intent: intent,
           documents: documents,
-          checks: checks,
-          source_content: latest_assistant_content(context)
-        ).call
+          message: message,
+          context: context,
+          client: local_model_client,
+          revision_notes: {
+            current_draft: artifact&.dig(:content),
+            failed_checks: Array(checks).reject { |check| check[:passed] || check["passed"] }
+          }
+        ).call_with_metrics
       end
     end
 

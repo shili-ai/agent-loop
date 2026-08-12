@@ -3,7 +3,7 @@ import type { AgentRun, AgentStep } from "../types/agent";
 export type ClarificationQuestion = {
   id?: string;
   question: string;
-  type?: "choice" | "text";
+  type?: "single" | "multiple" | "text";
   options?: string[];
 };
 
@@ -20,7 +20,7 @@ export function clarificationQuestionsFromStep(step?: AgentStep): ClarificationQ
       return {
         id: typeof record.id === "string" ? record.id : undefined,
         question: record.question,
-        type: record.type === "choice" ? "choice" : "text",
+        type: record.type === "multiple" ? "multiple" : record.type === "text" ? "text" : "single",
         options: Array.isArray(record.options) ? record.options.map(String) : undefined,
       };
     })

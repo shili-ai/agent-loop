@@ -17,6 +17,7 @@ export type FlowNodeData = {
   isStart: boolean;
   isEnd: boolean;
   stepIndex: number | null;
+  elapsedSeconds: number | null;
 };
 
 export type FlowNode = {
@@ -64,8 +65,9 @@ const ACTION_LABELS: Record<string, string> = {
 
 type LaneNode = { title: string; details: string[]; kind?: string };
 type PlannedAction = { action: string; title: string; detail: string; expected: string };
+type PlanExecution = { step: AgentStep; index: number; supportingSteps: AgentStep[] };
 
-export function buildRunFlowGraph(steps: AgentStep[], options: { running?: boolean; blocked?: boolean } = {}): FlowGraph {
+export function buildRunFlowGraph(steps: AgentStep[], options: { running?: boolean; blocked?: boolean; now?: number } = {}): FlowGraph {
   const plannedActions = plannedActionsFromRun(steps);
   if (plannedActions.length) return buildPlannedFlowGraph(steps, plannedActions, options);
 
@@ -138,12 +140,12 @@ export function buildRunFlowGraph(steps: AgentStep[], options: { running?: boole
 
   appendPlannedNodes(nodes, edges, steps, row, prevExits, options, activeIds);
 
-  return { nodes, edges };
+  return withElapsedTimes({ nodes, edges }, steps, options.now);
 }
 
 // Flow mode ưu tiên biểu diễn cấu trúc plan thay vì từng log nội bộ. Trace mode
 // vẫn hiển thị đầy đủ decision/LLM/evaluation theo đúng thứ tự thực thi.
-function buildPlannedFlowGraph(steps: AgentStep[], plan: PlannedAction[], options: { running?: boolean; blocked?: boolean }): FlowGraph {
+function buildPlannedFlowGraph(steps: AgentStep[], plan: PlannedAction[], options: { running?: boolean; blocked?: boolean; now?: number }): FlowGraph {
   const nodes: FlowNode[] = [];
   const edges: FlowEdge[] = [];
   const activeIds = new Set<string>();
@@ -175,7 +177,7 @@ function buildPlannedFlowGraph(steps: AgentStep[], plan: PlannedAction[], option
   let actionIndex = 0;
   while (actionIndex < plan.length) {
     const group = parallelPlannedSteps(plan, actionIndex);
-    const ids = group.map((planned, branchIndex) => {
+    const branchExits = group.flatMap((planned, branchIndex) => {
       const execution = executions[actionIndex + branchIndex];
       const status = plannedActionStatus(execution, options, hasActiveNode);
       if (status === "active") hasActiveNode = true;
@@ -191,15 +193,65 @@ function buildPlannedFlowGraph(steps: AgentStep[], plan: PlannedAction[], option
           debug: JSON.stringify({ planned_action: planned.action, status, execution_step: execution?.step.kind }, null, 2),
         })
       );
-      return id;
+      const lanes = plannedActionLanes(planned.action, execution);
+      if (!lanes.length) return [id];
+
+      const laneOffset = (lanes.length - 1) / 2;
+      return lanes.map((lane, laneIndex) => {
+        let previous = id;
+        lane.forEach((laneNode, nodeIndex) => {
+          const laneId = `${id}L${laneIndex}N${nodeIndex}`;
+          nodes.push(
+            graphNode(laneId, laneNode.kind ?? "lane", laneNode.title, laneNode.details, branchIndex - (group.length - 1) / 2 + (laneIndex - laneOffset) * 0.42, row + nodeIndex + 1, {
+              status,
+              isStart: false,
+              isEnd: false,
+              stepIndex: execution?.index ?? null,
+              summary: "",
+              debug: JSON.stringify({ planned_action: planned.action, branch: laneIndex + 1, title: laneNode.title }, null, 2),
+            })
+          );
+          edges.push(edge(previous, laneId, activeIds));
+          previous = laneId;
+        });
+        return previous;
+      });
     });
-    ids.forEach((id) => exits.forEach((from) => edges.push(edge(from, id, activeIds))));
-    exits = ids;
-    row += 1;
+    const parentIds = group.map((_, branchIndex) => `P${actionIndex + branchIndex + 1}`);
+    parentIds.forEach((id) => exits.forEach((from) => edges.push(edge(from, id, activeIds))));
+    exits = branchExits;
+    row += 1 + Math.max(0, ...group.map((planned, branchIndex) => plannedActionLanes(planned.action, executions[actionIndex + branchIndex]).reduce((max, lane) => Math.max(max, lane.length), 0)));
     actionIndex += group.length;
   }
 
-  return { nodes, edges };
+  return withElapsedTimes({ nodes, edges }, steps, options.now);
+}
+
+// Lane kết quả chỉ là chi tiết của node chính nên không lặp lại thời lượng.
+// Node active dùng `now` để số giây tăng trực tiếp trên sơ đồ.
+function withElapsedTimes(graph: FlowGraph, steps: AgentStep[], now = Date.now()): FlowGraph {
+  return {
+    ...graph,
+    nodes: graph.nodes.map((node) => {
+      const step = node.data.stepIndex === null ? undefined : steps[node.data.stepIndex];
+      const showElapsed = step && node.data.status !== "pending" && !node.id.includes("L");
+      return {
+        ...node,
+        data: { ...node.data, elapsedSeconds: showElapsed ? elapsedSeconds(step, node.data.status, now) : null },
+      };
+    }),
+  };
+}
+
+function elapsedSeconds(step: AgentStep, status: FlowNodeStatus, now: number) {
+  const startedAt = Date.parse(step.created_at ?? "");
+  if (Number.isNaN(startedAt)) return null;
+  const finishedAt = status === "active" ? now : Date.parse(step.updated_at ?? step.created_at ?? "");
+  if (Number.isNaN(finishedAt)) return null;
+  const seconds = Math.max(0, Math.floor((finishedAt - startedAt) / 1000));
+  // Các node tổng hợp dữ liệu cục bộ có thể hoàn thành trong cùng mili-giây.
+  // Không hiển thị "0s" vì nó dễ bị hiểu nhầm là một lượt gọi model riêng.
+  return seconds > 0 ? seconds : null;
 }
 
 function plannedActionsFromRun(steps: AgentStep[]): PlannedAction[] {
@@ -214,16 +266,90 @@ function plannedActionsFromRun(steps: AgentStep[]): PlannedAction[] {
     .filter((step) => Boolean(ACTION_LABELS[step.action]));
 }
 
-function plannedExecutions(steps: AgentStep[], plan: PlannedAction[], offset: number) {
+function plannedExecutions(steps: AgentStep[], plan: PlannedAction[], offset: number): Array<PlanExecution | undefined> {
   let cursor = 0;
-  return plan.map((planned) => {
+  const found = plan.map((planned) => {
     for (let index = cursor; index < steps.length; index += 1) {
       if (actionForStep(steps[index]) !== planned.action) continue;
       cursor = index + 1;
-      return { step: steps[index], index: index + offset };
+      return { step: steps[index], index: index + offset, localIndex: index };
     }
     return undefined;
   });
+  return found.map((entry, index) => {
+    if (!entry) return undefined;
+    const next = found.slice(index + 1).find(Boolean);
+    return { step: entry.step, index: entry.index, supportingSteps: steps.slice(entry.localIndex + 1, next?.localIndex ?? steps.length) };
+  });
+}
+
+function plannedActionLanes(action: string, execution: PlanExecution | undefined): LaneNode[][] {
+  if (!execution) return [];
+  if (action === "search_documents") return documentResultLanes(execution);
+  if (action === "web_search") return webResultLanes(execution);
+  return [];
+}
+
+function documentResultLanes(execution: PlanExecution): LaneNode[][] {
+  const documents = asRecords(execution.step.data?.documents);
+  const evaluation = evaluationData(execution.supportingSteps, "document_evaluations");
+  return documents.slice(0, 5).map((document) => {
+    const result = evaluationFor(document, evaluation);
+    const provider = isDriveDoc(document) ? "Google Drive" : "Kho nội bộ";
+    return [
+      { kind: "source", title: `${provider}: ${asText(document.title) || "Không có tiêu đề"}`, details: searchResultDetails([document]) },
+      { kind: "evaluation-detail", title: evaluationTitle(result), details: evaluationDetails(result) },
+    ];
+  });
+}
+
+function webResultLanes(execution: PlanExecution): LaneNode[][] {
+  const data = execution.step.data ?? {};
+  const accepted = asRecords(data.web_results);
+  const candidates = asRecords(data.web_candidates);
+  const raw = asRecords(data.web_raw_results);
+  const sources = (candidates.length ? candidates : raw.length ? raw : accepted).slice(0, 5);
+  const evaluation = evaluationData(execution.supportingSteps, "web_result_evaluations");
+  const pages = asRecords(execution.supportingSteps.find((step) => step.kind === "web_read")?.data?.pages);
+  return sources.map((source) => {
+    const acceptedResult = accepted.some((result) => sameSource(result, source));
+    const result = evaluationFor(source, evaluation) ?? (acceptedResult ? { accepted: true } : { accepted: false, reason: asText(source.reason) || "Không đạt bộ lọc" });
+    const lane: LaneNode[] = [
+      { kind: "source", title: `Kết quả web: ${asText(source.title) || asText(source.url) || "Không có tiêu đề"}`, details: searchResultDetails([source]) },
+      { kind: "evaluation-detail", title: evaluationTitle(result), details: evaluationDetails(result) },
+    ];
+    if (result.accepted === true) {
+      const page = pages.find((item) => sameSource(item, source));
+      lane.push({
+        kind: "crawler",
+        title: "Đọc nội dung trang",
+        details: page ? webReadDetails({ results: [page] }, [page]) : ["Đang chờ đọc trang đạt chuẩn"],
+      });
+    }
+    return lane;
+  });
+}
+
+function evaluationData(steps: AgentStep[], key: string) {
+  return asRecords(steps.find((step) => step.kind === "evaluation")?.data?.[key]);
+}
+
+function evaluationFor(source: Record<string, unknown>, evaluations: Record<string, unknown>[]) {
+  return evaluations.find((entry) => sameSource(entry, source));
+}
+
+function sameSource(left: Record<string, unknown>, right: Record<string, unknown>) {
+  const leftKey = asText(left.url) || asText(left.source) || asText(left.title) || asText(left.name);
+  const rightKey = asText(right.url) || asText(right.source) || asText(right.title) || asText(right.name);
+  return Boolean(leftKey && rightKey && leftKey === rightKey);
+}
+
+function evaluationTitle(result?: Record<string, unknown>) {
+  return result?.accepted === true ? "Đánh giá: Pass" : result?.accepted === false ? "Đánh giá: Không đạt" : "Đánh giá: Đang chờ";
+}
+
+function evaluationDetails(result?: Record<string, unknown>) {
+  return compactLines([labeled("điểm", asText(result?.score)), labeled("lý do", asText(result?.reason)), result?.accepted === undefined ? "Đang chờ kết quả đánh giá" : ""]);
 }
 
 function parallelPlannedSteps(plan: PlannedAction[], index: number) {
@@ -264,7 +390,7 @@ function graphNode(
   return {
     id,
     position: { x: Math.round(col * COL_W), y: row * ROW_H },
-    data: { kind, title, details: details.filter(Boolean), ...meta },
+    data: { kind, title, details: details.filter(Boolean), elapsedSeconds: null, ...meta },
   };
 }
 

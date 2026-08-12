@@ -146,12 +146,7 @@ module AgentLoop
     end
 
     def clarified?
-      @user_message.downcase.include?("bổ sung ngữ cảnh:") ||
-        Array(@context[:recent_messages]).any? do |message|
-          role = message[:role] || message["role"]
-          content = message[:content] || message["content"]
-          role == "user" && content.to_s.downcase.start_with?("bổ sung ngữ cảnh:")
-        end
+      @user_message.downcase.include?("bổ sung ngữ cảnh:")
     end
   end
 end
